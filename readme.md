@@ -1,1 +1,46 @@
+# ***************** En desarrollo no esta completo **********
+
 Función de auditoría para PostgreSQL  que permite registrar de forma centralizada y sencilla las operaciones DDL y DML realizadas sobre las tablas.
+
+```
+Begin;
+
+--- tiene problemas con los drop ya que no los registra  ddl_command_end ya que tienes que usar el sql_drop
+
+CREATE TABLE public.clientes (
+    id SERIAL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    correo TEXT,
+    fecha_registro DATE DEFAULT CURRENT_DATE
+);
+
+-- Insertar registros de ejemplo
+INSERT INTO public.clientes (nombre, correo) VALUES
+('Ana Torres', 'ana.torres@example.com'),
+('Luis Gómez', 'luis.gomez@example.com'),
+('María López', 'maria.lopez@example.com'),
+('Carlos Ruiz', 'carlos.ruiz@example.com');
+
+
+
+
+SELECT pgAuditSimple('ddl','alter','clientes', true);
+
+
+
+alter table public.clientes add column new_column INT;
+create table jose(num int);
+
+\x
+select * from cdc.audit  ;
+
+
+INSERT INTO cdc.obj_audit(object_name) VALUES ('public.jose');
+alter table public.jose add column new_column INT;
+drop table public.jose;
+
+select * from cdc.audit  ;
+select * from cdc.obj_audit;
+
+rollback;
+```
