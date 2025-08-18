@@ -3,6 +3,12 @@
 Función de auditoría para PostgreSQL  que permite registrar de forma centralizada y sencilla las operaciones DDL y DML realizadas sobre las tablas.
 
 ```
+-- Cosas por agregar
+1.- Agregar que cree una vista en caso de agregar un objeto a monitorear
+2.- Cambiar el comportamiento de las tablas default que solo se creen si se especifica en el parametro p_ejecutar
+3.- Hacer que identifique el nombre del objeto cuando se elimina un objeto con sql_drop o filtrando la query
+4.- Agregar el tipo DML
+
 Begin;
 
 --- tiene problemas con los drop ya que no los registra  ddl_command_end ya que tienes que usar el sql_drop
