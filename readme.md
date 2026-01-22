@@ -54,6 +54,7 @@ rollback;
 
 --------------- audit ---------
 https://github.com/cmabastar/audit-trigger/blob/master/audit.sql
+https://wiki.postgresql.org/wiki/Audit_trigger
 https://github.com/supabase/supa_audit
 
 
