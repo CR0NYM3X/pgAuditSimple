@@ -49,4 +49,13 @@ select * from cdc.audit  ;
 select * from cdc.obj_audit;
 
 rollback;
+
+
+
+--------------- audit ---------
+https://github.com/cmabastar/audit-trigger/blob/master/audit.sql
+https://github.com/supabase/supa_audit
+
+
+
 ```
