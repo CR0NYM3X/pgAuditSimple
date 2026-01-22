@@ -54,9 +54,14 @@ rollback;
 
 --------------- audit ---------
 https://github.com/cmabastar/audit-trigger/blob/master/audit.sql
+https://github.com/2ndQuadrant/audit-trigger
 https://wiki.postgresql.org/wiki/Audit_trigger
+https://github.com/iloveitaly/audit-trigger
 https://github.com/supabase/supa_audit
+https://ttu.github.io/postgres-simple-audit-trail/
 
+https://medium.com/israeli-tech-radar/postgresql-trigger-based-audit-log-fd9d9d5e412c
+https://www.tigerdata.com/learn/what-is-audit-logging-and-how-to-enable-it-in-postgresql
 
 
 ```
