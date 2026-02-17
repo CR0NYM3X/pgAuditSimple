@@ -3,6 +3,17 @@
 Función de auditoría para PostgreSQL  que permite registrar de forma centralizada y sencilla las operaciones DDL y DML realizadas sobre las tablas.
 
 ```
+chg_audit.auditoria_ddl
+chg_audit.cat_cliente -- Aqui se guardan todos los
+
+-- funciones y trigger 
+registrar_truncate_cat_cliente()
+registrar_ddl_cat_cliente()
+registrar_dml_cat_cliente()
+registrar_evento_ddl()
+
+
+
 -- Cosas por agregar
 1.- Agregar que cree una vista en caso de agregar un objeto a monitorear
 2.- Cambiar el comportamiento de las tablas default que solo se creen si se especifica en el parametro p_ejecutar
