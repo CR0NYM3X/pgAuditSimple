@@ -14,9 +14,9 @@ SECURITY DEFINER
 AS $deploy$
 DECLARE
     v_pk_type      text;
-    v_audit_table  text := p_table;
-    v_trigger_func text := 'fn_trg_audit_' || p_table;
-    v_trunc_func   text := 'fn_trg_trunc_' || p_table;
+    v_audit_table  text := p_schema || '_' || p_table;
+    v_trigger_func text := 'fn_trg_audit_' || p_schema || '_' || p_table;
+    v_trunc_func   text := 'fn_trg_trunc_' || p_schema || '_' || p_table;
     v_sql          text;
     v_event_list   text := lower(p_events);
 BEGIN
@@ -189,7 +189,7 @@ DELETE FROM public.clientes where id_cli = 101;
 TRUNCATE TABLE public.clientes;
 
 -- Verificamos
-SELECT * FROM audit.clientes;
+SELECT * FROM audit.public_clientes;
 
 ------------------------------------------------------------
 -- PRUEBA 2: Lista personalizada (Solo Insert y Delete)
@@ -202,7 +202,7 @@ INSERT INTO public.productos VALUES (1, 'SKU-001');
 UPDATE public.productos SET sku = 'SKU-999' WHERE id_prod = 1; -- No debería auditarse
 DELETE FROM public.productos WHERE id_prod = 1;
 
-SELECT * FROM audit.productos;
+SELECT * FROM audit.public_productos;
 
 
 SELECT * FROM audit.dml_inventory;
