@@ -20,11 +20,11 @@ BEGIN
     -- 1. Obtener los metadatos de la tabla monitoreada
     SELECT schema_name, table_name, pk_column 
     INTO v_schema_orig, v_table_orig, v_pk_col
-    FROM audit.conf_monitored_tables 
+    FROM audit.dml_inventory 
     WHERE table_name = p_audit_table;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'La tabla % no está registrada en conf_monitored_tables', p_audit_table;
+        RAISE EXCEPTION 'La tabla % no está registrada en dml_inventory', p_audit_table;
     END IF;
 
     -- 2. Obtener el registro de auditoría
