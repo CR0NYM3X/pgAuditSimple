@@ -10,7 +10,6 @@ BEGIN
     -- 2. TABLA DE HISTORIA CENTRALIZADA
     CREATE TABLE IF NOT EXISTS audit.ddl_history (
         id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        port        int,
         app_name    text,
         db_name     text,
         event       text, 
@@ -76,7 +75,7 @@ BEGIN
     -- 6. FUNCIÓN DEL TRIGGER DE EVENTOS
     EXECUTE $sql$
     CREATE OR REPLACE FUNCTION audit.fn_trg_register_ddl()
-    RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+    RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER AS $_fn_$
     DECLARE
         v_app_name  text := current_setting('application_name', true);
         v_query     text := current_query();
@@ -101,8 +100,8 @@ BEGIN
                         coalesce(host(inet_client_addr()), '127.0.0.1'), v_query, v_timestamp);
             END LOOP;
         END IF;
-    EXCEPTION WHEN OTHERS THEN RAISE WARNING 'DDL Audit failed: %%', SQLERRM;
-    END; $$;
+    EXCEPTION WHEN OTHERS THEN RAISE WARNING 'DDL Audit failed: %', SQLERRM;
+    END; $_fn_$;
     $sql$;
 
     -- 7. SEGURIDAD DE LA FUNCIÓN
@@ -126,11 +125,14 @@ $install$;
 -- Ejecutar el instalador
 -- SELECT public.pg_deploy_audit_ddl();
 
+-- Probar el registro
+-- CREATE TABLE test_a(id int); CREATE TABLE test_b(id int);
+-- DROP TABLE test_a, test_b;
+
 -- Verificar la matriz cargada
 -- SELECT * FROM audit.conf_event_matrix;
 -- SELECT * FROM  audit.ddl_history
 -- SELECT * FROM udit.conf_excluded_apps
 
--- Probar el registro
--- CREATE TABLE public.test_instalacion (id int);
---SELECT * FROM audit.ddl_history;
+
+ 
