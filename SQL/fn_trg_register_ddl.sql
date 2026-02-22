@@ -21,7 +21,7 @@ CREATE SCHEMA IF NOT EXISTS audit;
 CREATE TABLE IF NOT EXISTS audit.ddl_history (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     -- server_ip     text,
-    port          int,
+   --  port          int,
     app_name      text,
     db_name       text,
     event         text, -- TG_TAG
