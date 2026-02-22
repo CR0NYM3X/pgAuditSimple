@@ -7,70 +7,73 @@ BEGIN
     -- 1. CREACIÓN DE INFRAESTRUCTURA DE ESQUEMA
     CREATE SCHEMA IF NOT EXISTS audit;
 
-    -- 2. TABLA DE HISTORIA CENTRALIZADA
-    CREATE TABLE IF NOT EXISTS audit.ddl_history (
-        id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        app_name    text,
-        db_name     text,
-        event       text, 
-        object_name text, 
-        user_name   text,
-        client_ip   text,
-        query       text,
-        created_at  timestamptz DEFAULT clock_timestamp()
-    );
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'ddl_history' ) THEN
+        -- 2. TABLA DE HISTORIA CENTRALIZADA
+        CREATE TABLE IF NOT EXISTS audit.ddl_history (
+            id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            app_name    text,
+            db_name     text,
+            event       text, 
+            object_name text, 
+            user_name   text,
+            client_ip   text,
+            query       text,
+            created_at  timestamptz DEFAULT clock_timestamp()
+        );
+    END IF;
 
-    -- 3. TABLA DE EXCLUSIÓN DE APLICACIONES
-    CREATE TABLE IF NOT EXISTS audit.conf_excluded_apps (
-        app_name text PRIMARY KEY,
-        description text,
-        created_at timestamptz DEFAULT clock_timestamp()
-    );
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_apps' ) THEN
+        -- 3. TABLA DE EXCLUSIÓN DE APLICACIONES
+        CREATE TABLE IF NOT EXISTS audit.conf_excluded_apps (
+            app_name text PRIMARY KEY,
+            description text,
+            created_at timestamptz DEFAULT clock_timestamp()
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
+        --INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_event_matrix' ) THEN
+        -- 4. MATRIZ DE CONFIGURACIÓN DE COMANDOS
+        CREATE TABLE IF NOT EXISTS audit.conf_event_matrix (
+            command_tag text PRIMARY KEY,
+            is_active boolean DEFAULT true,
+            created_at timestamptz DEFAULT clock_timestamp()
+        );
     
-    CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
-
-    INSERT INTO audit.conf_excluded_apps (app_name, description) 
-    VALUES ('pg_cron', 'Procesos de mantenimiento automático')
-    ON CONFLICT DO NOTHING;
-
-    -- 4. MATRIZ DE CONFIGURACIÓN DE COMANDOS
-    CREATE TABLE IF NOT EXISTS audit.conf_event_matrix (
-        command_tag text PRIMARY KEY,
-        is_active boolean DEFAULT true,
-        created_at timestamptz DEFAULT clock_timestamp()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_conf_event_matrix_active 
-    ON audit.conf_event_matrix (command_tag) WHERE is_active = true;
-
-    -- 5. POBLADO DE MATRIZ (POSTGRESQL 17)
-    INSERT INTO audit.conf_event_matrix (command_tag) VALUES
-    ('CREATE TABLE'), ('ALTER TABLE'), ('DROP TABLE'), ('CREATE TABLE AS'), ('SELECT INTO'),
-    ('CREATE INDEX'), ('ALTER INDEX'), ('DROP INDEX'), ('CREATE VIEW'), ('ALTER VIEW'), ('DROP VIEW'),
-    ('CREATE MATERIALIZED VIEW'), ('ALTER MATERIALIZED VIEW'), ('DROP MATERIALIZED VIEW'), ('REFRESH MATERIALIZED VIEW'),
-    ('CREATE SEQUENCE'), ('ALTER SEQUENCE'), ('DROP SEQUENCE'), ('CREATE TYPE'), ('ALTER TYPE'), ('DROP TYPE'),
-    ('CREATE DOMAIN'), ('ALTER DOMAIN'), ('DROP DOMAIN'), ('CREATE FUNCTION'), ('ALTER FUNCTION'), ('DROP FUNCTION'),
-    ('CREATE PROCEDURE'), ('ALTER PROCEDURE'), ('DROP PROCEDURE'), ('CREATE AGGREGATE'), ('ALTER AGGREGATE'), ('DROP AGGREGATE'),
-    ('CREATE ROUTINE'), ('ALTER ROUTINE'), ('DROP ROUTINE'), ('CREATE SCHEMA'), ('ALTER SCHEMA'), ('DROP SCHEMA'),
-    ('CREATE EXTENSION'), ('ALTER EXTENSION'), ('DROP EXTENSION'), ('CREATE TRIGGER'), ('ALTER TRIGGER'), ('DROP TRIGGER'),
-    ('CREATE RULE'), ('DROP RULE'), ('CREATE OPERATOR'), ('ALTER OPERATOR'), ('DROP OPERATOR'), ('CREATE OPERATOR CLASS'),
-    ('ALTER OPERATOR CLASS'), ('DROP OPERATOR CLASS'), ('CREATE OPERATOR FAMILY'), ('ALTER OPERATOR FAMILY'), ('DROP OPERATOR FAMILY'),
-    ('CREATE CAST'), ('DROP CAST'), ('CREATE CONVERSION'), ('ALTER CONVERSION'), ('DROP CONVERSION'), ('CREATE COLLATION'),
-    ('ALTER COLLATION'), ('DROP COLLATION'), ('CREATE TEXT SEARCH CONFIGURATION'), ('ALTER TEXT SEARCH CONFIGURATION'),
-    ('DROP TEXT SEARCH CONFIGURATION'), ('CREATE TEXT SEARCH DICTIONARY'), ('ALTER TEXT SEARCH DICTIONARY'), ('DROP TEXT SEARCH DICTIONARY'),
-    ('CREATE TEXT SEARCH PARSER'), ('ALTER TEXT SEARCH PARSER'), ('DROP TEXT SEARCH PARSER'), ('CREATE TEXT SEARCH TEMPLATE'),
-    ('ALTER TEXT SEARCH TEMPLATE'), ('DROP TEXT SEARCH TEMPLATE'), ('CREATE POLICY'), ('ALTER POLICY'), ('DROP POLICY'),
-    ('CREATE ROLE'), ('ALTER ROLE'), ('DROP ROLE'), ('CREATE USER'), ('ALTER USER'), ('DROP USER'), ('CREATE USER GROUP'),
-    ('ALTER USER GROUP'), ('DROP USER GROUP'), ('CREATE FOREIGN DATA WRAPPER'), ('ALTER FOREIGN DATA WRAPPER'), ('DROP FOREIGN DATA WRAPPER'),
-    ('CREATE SERVER'), ('ALTER SERVER'), ('DROP SERVER'), ('CREATE USER MAPPING'), ('ALTER USER MAPPING'), ('DROP USER MAPPING'),
-    ('CREATE FOREIGN TABLE'), ('ALTER FOREIGN TABLE'), ('DROP FOREIGN TABLE'), ('IMPORT FOREIGN SCHEMA'), ('CREATE PUBLICATION'),
-    ('ALTER PUBLICATION'), ('DROP PUBLICATION'), ('CREATE SUBSCRIPTION'), ('ALTER SUBSCRIPTION'), ('DROP SUBSCRIPTION'),
-    ('CREATE STATISTICS'), ('ALTER STATISTICS'), ('DROP STATISTICS'), ('CREATE EVENT TRIGGER'), ('ALTER EVENT TRIGGER'),
-    ('DROP EVENT TRIGGER'), ('CREATE LANGUAGE'), ('ALTER LANGUAGE'), ('DROP LANGUAGE'), ('CREATE TRANSFORM'), ('DROP TRANSFORM'),
-    ('CREATE ACCESS METHOD'), ('DROP ACCESS METHOD'), ('CREATE TS CONFIG'), ('ALTER TS CONFIG'), ('DROP TS CONFIG'),
-    ('CREATE TS DICT'), ('ALTER TS DICT'), ('DROP TS DICT'), ('CREATE TS PARSER'), ('ALTER TS PARSER'), ('DROP TS PARSER'),
-    ('CREATE TS TEMPLATE'), ('ALTER TS TEMPLATE'), ('DROP TS TEMPLATE'), ('COMMENT'), ('SECURITY LABEL'), ('GRANT'), ('REVOKE')
-    ON CONFLICT (command_tag) DO NOTHING;
+        CREATE INDEX IF NOT EXISTS idx_conf_event_matrix_active 
+        ON audit.conf_event_matrix (command_tag) WHERE is_active = true;
+    
+        -- 5. POBLADO DE MATRIZ (POSTGRESQL 17)
+        INSERT INTO audit.conf_event_matrix (command_tag) VALUES
+        ('CREATE TABLE'), ('ALTER TABLE'), ('DROP TABLE'), ('CREATE TABLE AS'), ('SELECT INTO'),
+        ('CREATE INDEX'), ('ALTER INDEX'), ('DROP INDEX'), ('CREATE VIEW'), ('ALTER VIEW'), ('DROP VIEW'),
+        ('CREATE MATERIALIZED VIEW'), ('ALTER MATERIALIZED VIEW'), ('DROP MATERIALIZED VIEW'), ('REFRESH MATERIALIZED VIEW'),
+        ('CREATE SEQUENCE'), ('ALTER SEQUENCE'), ('DROP SEQUENCE'), ('CREATE TYPE'), ('ALTER TYPE'), ('DROP TYPE'),
+        ('CREATE DOMAIN'), ('ALTER DOMAIN'), ('DROP DOMAIN'), ('CREATE FUNCTION'), ('ALTER FUNCTION'), ('DROP FUNCTION'),
+        ('CREATE PROCEDURE'), ('ALTER PROCEDURE'), ('DROP PROCEDURE'), ('CREATE AGGREGATE'), ('ALTER AGGREGATE'), ('DROP AGGREGATE'),
+        ('CREATE ROUTINE'), ('ALTER ROUTINE'), ('DROP ROUTINE'), ('CREATE SCHEMA'), ('ALTER SCHEMA'), ('DROP SCHEMA'),
+        ('CREATE EXTENSION'), ('ALTER EXTENSION'), ('DROP EXTENSION'), ('CREATE TRIGGER'), ('ALTER TRIGGER'), ('DROP TRIGGER'),
+        ('CREATE RULE'), ('DROP RULE'), ('CREATE OPERATOR'), ('ALTER OPERATOR'), ('DROP OPERATOR'), ('CREATE OPERATOR CLASS'),
+        ('ALTER OPERATOR CLASS'), ('DROP OPERATOR CLASS'), ('CREATE OPERATOR FAMILY'), ('ALTER OPERATOR FAMILY'), ('DROP OPERATOR FAMILY'),
+        ('CREATE CAST'), ('DROP CAST'), ('CREATE CONVERSION'), ('ALTER CONVERSION'), ('DROP CONVERSION'), ('CREATE COLLATION'),
+        ('ALTER COLLATION'), ('DROP COLLATION'), ('CREATE TEXT SEARCH CONFIGURATION'), ('ALTER TEXT SEARCH CONFIGURATION'),
+        ('DROP TEXT SEARCH CONFIGURATION'), ('CREATE TEXT SEARCH DICTIONARY'), ('ALTER TEXT SEARCH DICTIONARY'), ('DROP TEXT SEARCH DICTIONARY'),
+        ('CREATE TEXT SEARCH PARSER'), ('ALTER TEXT SEARCH PARSER'), ('DROP TEXT SEARCH PARSER'), ('CREATE TEXT SEARCH TEMPLATE'),
+        ('ALTER TEXT SEARCH TEMPLATE'), ('DROP TEXT SEARCH TEMPLATE'), ('CREATE POLICY'), ('ALTER POLICY'), ('DROP POLICY'),
+        ('CREATE ROLE'), ('ALTER ROLE'), ('DROP ROLE'), ('CREATE USER'), ('ALTER USER'), ('DROP USER'), ('CREATE USER GROUP'),
+        ('ALTER USER GROUP'), ('DROP USER GROUP'), ('CREATE FOREIGN DATA WRAPPER'), ('ALTER FOREIGN DATA WRAPPER'), ('DROP FOREIGN DATA WRAPPER'),
+        ('CREATE SERVER'), ('ALTER SERVER'), ('DROP SERVER'), ('CREATE USER MAPPING'), ('ALTER USER MAPPING'), ('DROP USER MAPPING'),
+        ('CREATE FOREIGN TABLE'), ('ALTER FOREIGN TABLE'), ('DROP FOREIGN TABLE'), ('IMPORT FOREIGN SCHEMA'), ('CREATE PUBLICATION'),
+        ('ALTER PUBLICATION'), ('DROP PUBLICATION'), ('CREATE SUBSCRIPTION'), ('ALTER SUBSCRIPTION'), ('DROP SUBSCRIPTION'),
+        ('CREATE STATISTICS'), ('ALTER STATISTICS'), ('DROP STATISTICS'), ('CREATE EVENT TRIGGER'), ('ALTER EVENT TRIGGER'),
+        ('DROP EVENT TRIGGER'), ('CREATE LANGUAGE'), ('ALTER LANGUAGE'), ('DROP LANGUAGE'), ('CREATE TRANSFORM'), ('DROP TRANSFORM'),
+        ('CREATE ACCESS METHOD'), ('DROP ACCESS METHOD'), ('CREATE TS CONFIG'), ('ALTER TS CONFIG'), ('DROP TS CONFIG'),
+        ('CREATE TS DICT'), ('ALTER TS DICT'), ('DROP TS DICT'), ('CREATE TS PARSER'), ('ALTER TS PARSER'), ('DROP TS PARSER'),
+        ('CREATE TS TEMPLATE'), ('ALTER TS TEMPLATE'), ('DROP TS TEMPLATE'), ('COMMENT'), ('SECURITY LABEL'), ('GRANT'), ('REVOKE')
+        ON CONFLICT (command_tag) DO NOTHING;
+    END IF;
 
     -- 6. FUNCIÓN DEL TRIGGER DE EVENTOS
     EXECUTE $sql$
@@ -130,7 +133,7 @@ $install$;
 -- DROP TABLE test_a, test_b;
 
 -- Verificar la matriz cargada
--- SELECT * FROM  audit.ddl_history
+-- SELECT * FROM  audit.ddl_history;
 
 -- Configurar comportamiento
 -- SELECT * FROM audit.conf_event_matrix;
