@@ -120,6 +120,7 @@ BEGIN
         CREATE OR REPLACE FUNCTION audit.%I()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
         BEGIN
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
             INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
             VALUES (NULL, 'TRUNCATE', jsonb_build_object('info', 'Tabla vaciada'), session_user, COALESCE(host(inet_client_addr()), '127.0.0.1'), current_query());
             RETURN NULL;
