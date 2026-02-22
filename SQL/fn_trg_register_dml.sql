@@ -1,8 +1,8 @@
 /*
- @Function: chg_ctl.fn_trg_register_dml
+ @Function: audit.fn_trg_register_dml
  @Creation Date: 22/05/2024
  @Description: Trigger function para auditoría granular de la tabla cat_servidores. 
-                Registra cambios (INSERT, UPDATE, DELETE) en chg_ctl.cat_servidores.
+                Registra cambios (INSERT, UPDATE, DELETE) en audit.cat_servidores.
  @Parameters:
    - N/A (Trigger Function)
  @Returns: trigger - Registro procesado (OLD/NEW)
@@ -14,10 +14,10 @@
 */
 
 ---------------- DDL ----------------
-CREATE SCHEMA IF NOT EXISTS chg_ctl;
+CREATE SCHEMA IF NOT EXISTS audit;
 
--- truncate TABLE chg_ctl.cat_servidores RESTART IDENTITY ;
-CREATE TABLE IF NOT EXISTS chg_ctl.cat_servidores (
+-- truncate TABLE audit.cat_servidores RESTART IDENTITY ;
+CREATE TABLE IF NOT EXISTS audit.cat_servidores (
     id_log          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_origen       integer, -- ID original de la tabla maestra
   
@@ -39,16 +39,16 @@ CREATE TABLE IF NOT EXISTS chg_ctl.cat_servidores (
  
 
 ---------------- COMMENT ----------------
-COMMENT ON TABLE chg_ctl.cat_servidores IS 'Histórico de auditoría optimizado para cat_servidores.';
-COMMENT ON COLUMN chg_ctl.cat_servidores.id_origen IS 'Llave primaria de la tabla original (public.cat_servidores).';
-COMMENT ON TABLE chg_ctl.cat_servidores IS 'Histórico de auditoría de la tabla cat_servidores.';
-COMMENT ON COLUMN chg_ctl.cat_servidores.id_log IS 'ID único de la entrada de auditoría.';
-COMMENT ON COLUMN chg_ctl.cat_servidores.valor_anterior IS 'Estado de la fila antes del cambio (Solo en UPDATE/DELETE).';
-COMMENT ON COLUMN chg_ctl.cat_servidores.valor_nuevo IS 'Estado de la fila después del cambio (Solo en INSERT/UPDATE).';
-COMMENT ON COLUMN chg_ctl.cat_servidores.id_origen IS 'Llave primaria de la tabla original (public.cat_servidores).';
+COMMENT ON TABLE audit.cat_servidores IS 'Histórico de auditoría optimizado para cat_servidores.';
+COMMENT ON COLUMN audit.cat_servidores.id_origen IS 'Llave primaria de la tabla original (public.cat_servidores).';
+COMMENT ON TABLE audit.cat_servidores IS 'Histórico de auditoría de la tabla cat_servidores.';
+COMMENT ON COLUMN audit.cat_servidores.id_log IS 'ID único de la entrada de auditoría.';
+COMMENT ON COLUMN audit.cat_servidores.valor_anterior IS 'Estado de la fila antes del cambio (Solo en UPDATE/DELETE).';
+COMMENT ON COLUMN audit.cat_servidores.valor_nuevo IS 'Estado de la fila después del cambio (Solo en INSERT/UPDATE).';
+COMMENT ON COLUMN audit.cat_servidores.id_origen IS 'Llave primaria de la tabla original (public.cat_servidores).';
 
 
-CREATE OR REPLACE FUNCTION chg_ctl.fn_trg_register_dml()
+CREATE OR REPLACE FUNCTION audit.fn_trg_register_dml()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -71,7 +71,7 @@ BEGIN
     IF TG_OP = 'INSERT' THEN
         v_new_jsonb := to_jsonb(NEW);
         
-        INSERT INTO chg_ctl.cat_servidores (
+        INSERT INTO audit.cat_servidores (
             id_origen, operacion, valor_anterior, valor_nuevo, usuario, 
             ip_cliente, query
         )
@@ -84,7 +84,7 @@ BEGIN
     ELSIF TG_OP = 'DELETE' THEN
         v_old_jsonb := to_jsonb(OLD);
         
-        INSERT INTO chg_ctl.cat_servidores (
+        INSERT INTO audit.cat_servidores (
             id_origen, operacion, valor_anterior, valor_nuevo, usuario, 
             ip_cliente, query
         )
@@ -108,7 +108,7 @@ BEGIN
 
         -- Solo insertar si hay cambios reales en los datos
         IF v_diff_new IS NOT NULL THEN
-            INSERT INTO chg_ctl.cat_servidores (
+            INSERT INTO audit.cat_servidores (
                 id_origen, operacion, valor_anterior, valor_nuevo, usuario, 
                 ip_cliente, query
             )
@@ -127,18 +127,18 @@ EXCEPTION
         GET STACKED DIAGNOSTICS 
             ex_message = MESSAGE_TEXT,
             ex_context = PG_EXCEPTION_CONTEXT;
-        RAISE WARNING 'Error en chg_ctl.fn_trg_register_dml: % | Contexto: %', ex_message, ex_context;
+        RAISE WARNING 'Error en audit.fn_trg_register_dml: % | Contexto: %', ex_message, ex_context;
         RETURN COALESCE(NEW, OLD); 
 END;
 $func$;
 
 -- Ajuste de seguridad: Fija search_path y quita permisos públicos
-ALTER FUNCTION chg_ctl.fn_trg_register_dml() SET search_path TO chg_ctl, public, pg_temp;
-REVOKE EXECUTE ON FUNCTION chg_ctl.fn_trg_register_dml() FROM PUBLIC;
+ALTER FUNCTION audit.fn_trg_register_dml() SET search_path TO audit, public, pg_temp;
+REVOKE EXECUTE ON FUNCTION audit.fn_trg_register_dml() FROM PUBLIC;
 
 
 ---------------- COMMENT ----------------
-COMMENT ON FUNCTION chg_ctl.fn_trg_register_dml() IS
+COMMENT ON FUNCTION audit.fn_trg_register_dml() IS
 'Función de trigger para auditoría de cat_servidores.
 - Parámetros: Ninguno (Uso interno de trigger)
 - Retorno: TRIGGER
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS public.cat_servidores (
 -- DROP TRIGGER IF EXISTS trg_auditoria_cat_servidores ON public.cat_servidores;
 CREATE TRIGGER trg_auditoria_cat_servidores
 AFTER INSERT OR UPDATE OR DELETE ON public.cat_servidores
-FOR EACH ROW EXECUTE FUNCTION chg_ctl.fn_trg_register_dml();
+FOR EACH ROW EXECUTE FUNCTION audit.fn_trg_register_dml();
 
 
 
@@ -181,5 +181,5 @@ DELETE FROM public.cat_servidores WHERE id = 1;
 
 SELECT 
     *
-FROM chg_ctl.cat_servidores
+FROM audit.cat_servidores
 ORDER BY fecha_cambio asc;
