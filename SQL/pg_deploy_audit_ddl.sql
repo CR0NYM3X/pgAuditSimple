@@ -130,8 +130,10 @@ $install$;
 -- DROP TABLE test_a, test_b;
 
 -- Verificar la matriz cargada
--- SELECT * FROM audit.conf_event_matrix;
 -- SELECT * FROM  audit.ddl_history
+
+-- Configurar comportamiento
+-- SELECT * FROM audit.conf_event_matrix;
 -- SELECT * FROM udit.conf_excluded_apps
 
 
