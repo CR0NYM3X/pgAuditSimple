@@ -63,7 +63,10 @@ Captura cambios a nivel de fila (INSERT, UPDATE, DELETE, TRUNCATE) de forma auto
 CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
 -- Desplegamos auditoría 'all'
-SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes', p_pk_col :=  'id_cli', p_events :=  'all');
+SELECT public.pg_deploy_audit_dml( p_schema := 'public',
+                                   p_table  := 'clientes',
+                                   p_pk_col := 'id_cli',
+                                   p_events := 'all');
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
@@ -73,10 +76,12 @@ TRUNCATE TABLE public.clientes;
 
 ```
 
-### Salida Esperada en `audit.clientes`:
+### Salida Esperada en `audit.public_clientes`:
+
+Las tablas siempre se guardan en el esquema **`audit`** con la siguiente estructura `p_schema  || _ || p_table` esto debido a que pueden existir varias tablas que se llaman igual pero en diferente esquema
 
 ```text
-postgres@test# SELECT * FROM audit.clientes;
+postgres@test# SELECT * FROM audit.public_clientes;
 +-[ RECORD 1 ]---+----------------------------------------------------------------------------------+
 | id_log         | 1                                                                                |
 | id_origen      | 101                                                                              |
