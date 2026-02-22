@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS chg_ctl.cat_servidores (
     id_origen       integer, -- ID original de la tabla maestra
   
     -- Datos de la Operación
-    operacion       text NOT NULL CHECK (operacion IN ('INSERT', 'UPDATE', 'DELETE')),
+    operacion       text NOT NULL CHECK (operacion IN ('INSERT', 'UPDATE', 'DELETE','TRUNCATE')),
     fecha_cambio    timestamptz NOT NULL DEFAULT clock_timestamp(),
     
     -- Payload de Datos (JSONB para flexibilidad y búsqueda)
