@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION audit.fn_generate_rollback(
+CREATE OR REPLACE FUNCTION audit.pg_generate_rollback(
     p_audit_table text,
     p_id_log      bigint
 )
@@ -72,7 +72,7 @@ END;
 $body$;
 
 -- Seguridad
-ALTER FUNCTION audit.fn_generate_rollback(text, bigint) SET search_path TO audit, public, pg_temp;
+ALTER FUNCTION audit.pg_generate_rollback(text, bigint) SET search_path TO audit, public, pg_temp;
 
 
 
@@ -80,10 +80,10 @@ ALTER FUNCTION audit.fn_generate_rollback(text, bigint) SET search_path TO audit
 -- Supongamos que el id_log es 450
 
 
--- SELECT audit.fn_generate_rollback('clientes', 1);
--- SELECT audit.fn_generate_rollback('clientes', 2);
--- SELECT audit.fn_generate_rollback('clientes', 3);
--- SELECT audit.fn_generate_rollback('clientes', 4);
+-- SELECT audit.pg_generate_rollback('clientes', 1);
+-- SELECT audit.pg_generate_rollback('clientes', 2);
+-- SELECT audit.pg_generate_rollback('clientes', 3);
+-- SELECT audit.pg_generate_rollback('clientes', 4);
 
 
 
