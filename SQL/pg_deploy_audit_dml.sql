@@ -1,12 +1,11 @@
 
 
-
-
 CREATE OR REPLACE FUNCTION public.pg_deploy_audit_dml(
-    p_schema text,
-    p_table  text,
-    p_pk_col text,
-    p_events text DEFAULT 'all'
+    p_schema            text,
+    p_table             text,
+    p_pk_col            text,
+    p_events            text DEFAULT 'all',
+    p_audit_table_name  text DEFAULT NULL  -- Nueva mejora: Nombre personalizado
 )
 RETURNS text
 LANGUAGE plpgsql
@@ -14,9 +13,10 @@ SECURITY DEFINER
 AS $deploy$
 DECLARE
     v_pk_type      text;
-    v_audit_table  text := p_schema || '_' || p_table;
-    v_trigger_func text := 'fn_trg_audit_' || p_schema || '_' || p_table;
-    v_trunc_func   text := 'fn_trg_trunc_' || p_schema || '_' || p_table;
+    -- Lógica de nombre: Si p_audit_table_name es null, usa el estándar de esquema_tabla
+    v_audit_table  text := COALESCE(p_audit_table_name, p_schema || '_' || p_table);
+    v_trigger_func text := 'fn_trg_audit_' || v_audit_table;
+    v_trunc_func   text := 'fn_trg_trunc_' || v_audit_table;
     v_sql          text;
     v_event_list   text := lower(p_events);
 BEGIN
@@ -32,33 +32,45 @@ BEGIN
     -- 2. Crear esquema audit si no existe
     CREATE SCHEMA IF NOT EXISTS audit;
 
+    -- 2.1 Tabla de Inventario
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'dml_inventory' ) THEN
-        CREATE TABLE IF NOT EXISTS audit.dml_inventory (
+        CREATE TABLE audit.dml_inventory (
             id_monitored    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             schema_name     text NOT NULL,
             table_name      text NOT NULL,
+			audit_table_name  text NOT NULL,
             pk_column       text NOT NULL,
-            events          text NOT NULL, -- Ej: 'all' o 'insert,update'
+            events          text NOT NULL,
             deployed_at     timestamptz DEFAULT clock_timestamp(),
             deployed_by     text DEFAULT session_user,
-            UNIQUE(schema_name, table_name) -- Evita duplicados de registro para la misma tabla
+            UNIQUE(schema_name, table_name)
         );
-        
         COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
         CREATE INDEX IF NOT EXISTS idx_conf_monitored_lookup ON audit.dml_inventory (table_name, schema_name);
     END IF;
 
+    -- 2.2 Tabla de Exclusión de Aplicaciones
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_apps' ) THEN
-        -- 3. TABLA DE EXCLUSIÓN DE APLICACIONES
-        CREATE TABLE IF NOT EXISTS audit.conf_excluded_apps (
+        CREATE TABLE audit.conf_excluded_apps (
             app_name text PRIMARY KEY,
             description text,
             created_at timestamptz DEFAULT clock_timestamp()
         );
-        
         CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
     END IF;
 
+    -- 2.3 Nueva Mejora: Tabla de Exclusión de Usuarios
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_users' ) THEN
+        CREATE TABLE audit.conf_excluded_users (
+            user_name text PRIMARY KEY,
+            description text,
+            created_at timestamptz DEFAULT clock_timestamp()
+        );
+        CREATE INDEX IF NOT EXISTS idx_conf_excluded_users ON audit.conf_excluded_users (user_name);
+        
+        -- Insertamos el usuario de sistema por defecto como ejemplo
+        -- INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+    END IF;
 
     -- 3. Crear tabla de auditoría espejo (Dynamic DDL)
     v_sql := format($sql$
@@ -78,24 +90,29 @@ BEGIN
     EXECUTE v_sql;
 
     -- 4. Generar Función de Trigger DML
+    -- Mejora: Verifica tanto conf_excluded_apps como conf_excluded_users
     v_sql := format($sql$
         CREATE OR REPLACE FUNCTION audit.%I()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
         DECLARE
             v_app_name  text := current_setting('application_name', true);
+            v_user_name text := session_user;
             v_old_jsonb jsonb; v_new_jsonb jsonb;
             v_diff_old  jsonb := '{}'; v_diff_new  jsonb := '{}';
             v_query     text := current_query();
             v_ip        text := COALESCE(host(inet_client_addr()), '127.0.0.1');
         BEGIN
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN NULL; END IF;
+            -- Filtros de exclusión
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN COALESCE(NEW, OLD); END IF;
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = v_user_name) THEN RETURN COALESCE(NEW, OLD); END IF;
+
             IF TG_OP = 'INSERT' THEN
                 INSERT INTO audit.%I (id_origen, operacion, valor_nuevo, usuario, ip_cliente, query)
-                VALUES (NEW.%I, 'INSERT', to_jsonb(NEW), session_user, v_ip, v_query);
+                VALUES (NEW.%I, 'INSERT', to_jsonb(NEW), v_user_name, v_ip, v_query);
                 RETURN NEW;
             ELSIF TG_OP = 'DELETE' THEN
                 INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
-                VALUES (OLD.%I, 'DELETE', to_jsonb(OLD), session_user, v_ip, v_query);
+                VALUES (OLD.%I, 'DELETE', to_jsonb(OLD), v_user_name, v_ip, v_query);
                 RETURN OLD;
             ELSIF TG_OP = 'UPDATE' THEN
                 v_old_jsonb := to_jsonb(OLD); v_new_jsonb := to_jsonb(NEW);
@@ -104,7 +121,7 @@ BEGIN
                 WHERE (v_new_jsonb -> key) IS DISTINCT FROM value;
                 IF v_diff_new IS NOT NULL THEN
                     INSERT INTO audit.%I (id_origen, operacion, valor_anterior, valor_nuevo, usuario, ip_cliente, query)
-                    VALUES (OLD.%I, 'UPDATE', v_diff_old, v_diff_new, session_user, v_ip, v_query);
+                    VALUES (OLD.%I, 'UPDATE', v_diff_old, v_diff_new, v_user_name, v_ip, v_query);
                 END IF;
                 RETURN NEW;
             END IF;
@@ -120,7 +137,10 @@ BEGIN
         CREATE OR REPLACE FUNCTION audit.%I()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
         BEGIN
+            -- Filtros de exclusión en Truncate
             IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = session_user) THEN RETURN NULL; END IF;
+
             INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
             VALUES (NULL, 'TRUNCATE', jsonb_build_object('info', 'Tabla vaciada'), session_user, COALESCE(host(inet_client_addr()), '127.0.0.1'), current_query());
             RETURN NULL;
@@ -129,11 +149,9 @@ BEGIN
     EXECUTE v_sql;
 
     -- 6. Montar Triggers finales según p_events
-    -- Limpieza previa
     EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_dml_%s ON %I.%I', p_table, p_schema, p_table);
     EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_trunc_%s ON %I.%I', p_table, p_schema, p_table);
 
-    -- Trigger DML (Insert, Update, Delete)
     IF v_event_list = 'all' OR v_event_list ~ '(insert|update|delete)' THEN
         DECLARE
             v_actual_events text := '';
@@ -151,21 +169,22 @@ BEGIN
         END;
     END IF;
 
-    -- Trigger Truncate
     IF v_event_list = 'all' OR v_event_list ~ 'truncate' THEN
         EXECUTE format('CREATE TRIGGER trg_audit_trunc_%s AFTER TRUNCATE ON %I.%I FOR EACH STATEMENT EXECUTE FUNCTION audit.%I()',
             p_table, p_schema, p_table, v_trunc_func);
     END IF;
 
--- 7. REGISTRO EN TABLA DE CONTROL (Idempotente)
-    INSERT INTO audit.dml_inventory (schema_name, table_name, pk_column, events)
-    VALUES (p_schema, p_table, p_pk_col, v_event_list)
-    ON CONFLICT (schema_name, table_name) 
-    DO UPDATE SET 
-        pk_column = EXCLUDED.pk_column,
-        events = EXCLUDED.events,
-        deployed_at = clock_timestamp(),
-        deployed_by = session_user;
+
+	-- 7. REGISTRO EN TABLA DE CONTROL (Idempotente)
+		INSERT INTO audit.dml_inventory (schema_name, table_name, audit_table_name, pk_column, events)
+		VALUES (p_schema, p_table, v_audit_table, p_pk_col, v_event_list)
+		ON CONFLICT (schema_name, table_name) 
+		DO UPDATE SET 
+            audit_table_name = EXCLUDED.audit_table_name,
+            pk_column = EXCLUDED.pk_column,
+            events = EXCLUDED.events,
+            deployed_at = clock_timestamp(),
+            deployed_by = session_user;
 
     RETURN format('Auditoría desplegada en audit.%s para la tabla %s.%s (Eventos: %s)', v_audit_table, p_schema, p_table, p_events);
 END;
@@ -179,8 +198,11 @@ $deploy$;
 -- Creamos una tabla de ejemplo
  CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
--- Desplegamos auditoría 'all'
-SELECT public.pg_deploy_audit_dml('public', 'clientes', 'id_cli', 'all');
+
+-- La auditoría se guardará en audit.historial_vip en lugar de audit.public_clientes
+SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all');
+
+-- SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all',  p_audit_table_name:=  'historial_vip');
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
@@ -204,7 +226,14 @@ DELETE FROM public.productos WHERE id_prod = 1;
 
 SELECT * FROM audit.public_productos;
 
-
+-------- Configuraciones extras ---------
 SELECT * FROM audit.dml_inventory;
+
+SELECT * FROM  audit.conf_excluded_users;
+INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+
+SELECT * FROM audit.conf_excluded_apps;
+INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+
 */
 
