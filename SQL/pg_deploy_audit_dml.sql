@@ -32,19 +32,32 @@ BEGIN
     -- 2. Crear esquema audit si no existe
     CREATE SCHEMA IF NOT EXISTS audit;
 
-    
-    CREATE TABLE IF NOT EXISTS audit.conf_monitored_tables (
-        id_monitored    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        schema_name     text NOT NULL,
-        table_name      text NOT NULL,
-        pk_column       text NOT NULL,
-        events          text NOT NULL, -- Ej: 'all' o 'insert,update'
-        deployed_at     timestamptz DEFAULT clock_timestamp(),
-        deployed_by     text DEFAULT session_user,
-        UNIQUE(schema_name, table_name) -- Evita duplicados de registro para la misma tabla
-    );
-    
-    COMMENT ON TABLE audit.conf_monitored_tables IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'dml_inventory' ) THEN
+        CREATE TABLE IF NOT EXISTS audit.dml_inventory (
+            id_monitored    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            schema_name     text NOT NULL,
+            table_name      text NOT NULL,
+            pk_column       text NOT NULL,
+            events          text NOT NULL, -- Ej: 'all' o 'insert,update'
+            deployed_at     timestamptz DEFAULT clock_timestamp(),
+            deployed_by     text DEFAULT session_user,
+            UNIQUE(schema_name, table_name) -- Evita duplicados de registro para la misma tabla
+        );
+        
+        COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
+        CREATE INDEX IF NOT EXISTS idx_conf_monitored_lookup ON audit.dml_inventory (table_name, schema_name);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_apps' ) THEN
+        -- 3. TABLA DE EXCLUSIÓN DE APLICACIONES
+        CREATE TABLE IF NOT EXISTS audit.conf_excluded_apps (
+            app_name text PRIMARY KEY,
+            description text,
+            created_at timestamptz DEFAULT clock_timestamp()
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
+    END IF;
 
 
     -- 3. Crear tabla de auditoría espejo (Dynamic DDL)
@@ -74,6 +87,7 @@ BEGIN
             v_query     text := current_query();
             v_ip        text := COALESCE(host(inet_client_addr()), '127.0.0.1');
         BEGIN
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN; END IF;
             IF TG_OP = 'INSERT' THEN
                 INSERT INTO audit.%I (id_origen, operacion, valor_nuevo, usuario, ip_cliente, query)
                 VALUES (NEW.%I, 'INSERT', to_jsonb(NEW), session_user, v_ip, v_query);
@@ -142,7 +156,7 @@ BEGIN
     END IF;
 
 -- 7. REGISTRO EN TABLA DE CONTROL (Idempotente)
-    INSERT INTO audit.conf_monitored_tables (schema_name, table_name, pk_column, events)
+    INSERT INTO audit.dml_inventory (schema_name, table_name, pk_column, events)
     VALUES (p_schema, p_table, p_pk_col, v_event_list)
     ON CONFLICT (schema_name, table_name) 
     DO UPDATE SET 
@@ -156,12 +170,12 @@ END;
 $deploy$;
 
 
-
+/*
 ------------------------------------------------------------
 -- PRUEBA 1: Auditoría completa (Default)
 ------------------------------------------------------------
 -- Creamos una tabla de ejemplo
-CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
+ CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
 -- Desplegamos auditoría 'all'
 SELECT public.pg_deploy_audit_dml('public', 'clientes', 'id_cli', 'all');
@@ -189,5 +203,6 @@ DELETE FROM public.productos WHERE id_prod = 1;
 SELECT * FROM audit.productos;
 
 
-SELECT * FROM audit.conf_monitored_tables;
+SELECT * FROM audit.dml_inventory;
+*/
 
