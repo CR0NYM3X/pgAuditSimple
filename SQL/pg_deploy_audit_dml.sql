@@ -168,7 +168,7 @@ SELECT public.pg_deploy_audit_dml('public', 'clientes', 'id_cli', 'all');
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
-UPDATE public.clientes SET saldo = 6000 WHERE id_cli = 101;
+UPDATE public.clientes SET saldo = 6000,nombre = 'Empresa Y' WHERE id_cli = 101;
 DELETE FROM public.clientes where id_cli = 101;
 TRUNCATE TABLE public.clientes;
 
