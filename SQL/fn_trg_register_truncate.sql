@@ -1,5 +1,5 @@
 /*
- @Function: chg_ctl.fn_trg_register_truncate
+ @Function: audit.fn_trg_register_truncate
  @Creation Date: 22/05/2024
  @Description: Trigger function para auditar la ejecución de comandos TRUNCATE.
  @Parameters:
@@ -12,7 +12,7 @@
  @Author: CR0NYM3X
 */
 
-CREATE OR REPLACE FUNCTION chg_ctl.fn_trg_register_truncate()
+CREATE OR REPLACE FUNCTION audit.fn_trg_register_truncate()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -23,7 +23,7 @@ DECLARE
 BEGIN
     -- Insertamos el evento de TRUNCATE
     -- id_origen es NULL porque se eliminan todos los registros
-    INSERT INTO chg_ctl.cat_servidores (
+    INSERT INTO audit.cat_servidores (
         id_origen,
         operacion,
         valor_anterior,
@@ -47,21 +47,21 @@ END;
 $func$;
 
 -- Ajuste de seguridad
-ALTER FUNCTION chg_ctl.fn_trg_register_truncate() SET search_path TO chg_ctl, public, pg_temp;
+ALTER FUNCTION audit.fn_trg_register_truncate() SET search_path TO audit, public, pg_temp;
 
 ---------------- COMMENT ----------------
-COMMENT ON FUNCTION chg_ctl.fn_trg_register_truncate() IS 
+COMMENT ON FUNCTION audit.fn_trg_register_truncate() IS 
 'Audita el comando TRUNCATE en la tabla cat_servidores.';
 
 ---------------- TRIGGER ----------------
 -- Nota: TRUNCATE solo soporta FOR EACH STATEMENT
 CREATE TRIGGER trg_auditoria_truncate_cat_servidores
 AFTER TRUNCATE ON public.cat_servidores
-FOR EACH STATEMENT EXECUTE FUNCTION chg_ctl.fn_trg_register_truncate();
+FOR EACH STATEMENT EXECUTE FUNCTION audit.fn_trg_register_truncate();
 
 
 -- 1. Ejecutar el truncate
 TRUNCATE TABLE public.cat_servidores;
 
 -- 2. Revisar la auditoría
-SELECT * FROM chg_ctl.cat_servidores WHERE operacion = 'TRUNCATE';
+SELECT * FROM audit.cat_servidores WHERE operacion = 'TRUNCATE';
