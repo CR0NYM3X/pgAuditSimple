@@ -63,16 +63,46 @@ Captura cambios a nivel de fila (INSERT, UPDATE, DELETE, TRUNCATE) de forma auto
 CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
 -- Desplegamos auditoría 'all'
-SELECT public.pg_deploy_audit_dml( p_schema := 'public',
-                                   p_table  := 'clientes',
-                                   p_pk_col := 'id_cli',
-                                   p_events := 'all');
+SELECT public.pg_deploy_audit_dml(  p_schema := 'public'
+                                   ,p_table  := 'clientes'
+                                   ,p_pk_col := 'id_cli'
+                                   ,p_events := 'all'
+                                   -- ,p_audit_table_name:=  'historial_clientes' -- Puedes dejarlo null o indicar como se va llamar la tabla
+                                  );
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
 UPDATE public.clientes SET saldo = 6000, nombre = 'Empresa Y' WHERE id_cli = 101;
 DELETE FROM public.clientes WHERE id_cli = 101;
 TRUNCATE TABLE public.clientes;
+
+
+SELECT * FROM audit.dml_inventory;
++--------------+-------------+------------+------------------+-----------+--------+------------------------------+-------------+
+| id_monitored | schema_name | table_name | audit_table_name | pk_column | events |         deployed_at          | deployed_by |
++--------------+-------------+------------+------------------+-----------+--------+------------------------------+-------------+
+|            1 | public      | clientes   | public_clientes  | id_cli    | all    | 2026-02-22 16:03:41.26481-07 | postgres    |
++--------------+-------------+------------+------------------+-----------+--------+------------------------------+-------------+
+
+-- Esto permite excluir usuarios de la auditoria.
+INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+SELECT * FROM  audit.conf_excluded_users;
++-----------+--------------------------+-------------------------------+
+| user_name |       description        |          created_at           |
++-----------+--------------------------+-------------------------------+
+| postgres  | Superusuario del sistema | 2026-02-22 16:10:38.273058-07 |
++-----------+--------------------------+-------------------------------+
+
+
+-- Esto permite exluir application_name de la auditoria.
+INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+SELECT * FROM audit.conf_excluded_apps;
++----------+--------------------------------------+-------------------------------+
+| app_name |             description              |          created_at           |
++----------+--------------------------------------+-------------------------------+
+| pg_cron  | Procesos de mantenimiento automático | 2026-02-22 16:10:51.462091-07 |
++----------+--------------------------------------+-------------------------------+
+
 
 ```
 
