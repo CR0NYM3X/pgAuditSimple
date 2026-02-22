@@ -63,7 +63,7 @@ Captura cambios a nivel de fila (INSERT, UPDATE, DELETE, TRUNCATE) de forma auto
 CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
 -- Desplegamos auditoría 'all'
-SELECT public.pg_deploy_audit_dml('public', 'clientes', 'id_cli', 'all');
+SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes', p_pk_col :=  'id_cli', p_events :=  'all');
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
