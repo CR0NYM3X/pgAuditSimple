@@ -82,12 +82,13 @@ BEGIN
         CREATE OR REPLACE FUNCTION audit.%I()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
         DECLARE
+            v_app_name  text := current_setting('application_name', true);
             v_old_jsonb jsonb; v_new_jsonb jsonb;
             v_diff_old  jsonb := '{}'; v_diff_new  jsonb := '{}';
             v_query     text := current_query();
             v_ip        text := COALESCE(host(inet_client_addr()), '127.0.0.1');
         BEGIN
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN; END IF;
+            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN NULL; END IF;
             IF TG_OP = 'INSERT' THEN
                 INSERT INTO audit.%I (id_origen, operacion, valor_nuevo, usuario, ip_cliente, query)
                 VALUES (NEW.%I, 'INSERT', to_jsonb(NEW), session_user, v_ip, v_query);
