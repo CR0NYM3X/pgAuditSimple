@@ -24,29 +24,29 @@ BEGIN
         );
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_apps' ) THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'excluded_apps_dll' ) THEN
         -- 3. TABLA DE EXCLUSIÓN DE APLICACIONES
-        CREATE TABLE IF NOT EXISTS audit.conf_excluded_apps (
+        CREATE TABLE IF NOT EXISTS audit.excluded_apps_dll (
             app_name text PRIMARY KEY,
             description text,
             created_at timestamptz DEFAULT clock_timestamp()
         );
         
-        CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
-        --INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+        CREATE INDEX IF NOT EXISTS idx_excluded_apps_dll ON audit.excluded_apps_dll (app_name);
+        --INSERT INTO audit.excluded_apps_dll (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
     END IF;
 
     -- Nueva Mejora: Tabla de Exclusión de Usuarios
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_users' ) THEN
-        CREATE TABLE audit.conf_excluded_users (
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'excluded_users_dll' ) THEN
+        CREATE TABLE audit.excluded_users_dll (
             user_name text PRIMARY KEY,
             description text,
             created_at timestamptz DEFAULT clock_timestamp()
         );
-        CREATE INDEX IF NOT EXISTS idx_conf_excluded_users ON audit.conf_excluded_users (user_name);
+        CREATE INDEX IF NOT EXISTS idx_excluded_users_dll ON audit.excluded_users_dll (user_name);
         
         -- Insertamos el usuario de sistema por defecto como ejemplo
-        -- INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+        -- INSERT INTO audit.excluded_users_dll (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
     END IF;
 
 
@@ -103,8 +103,8 @@ BEGIN
         r_obj       record;
         -- v_is_active boolean;
     BEGIN
-        IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN; END IF;
-        IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = v_user_name) THEN RETURN; END IF;
+        IF EXISTS (SELECT 1 FROM audit.excluded_apps_dll WHERE app_name = v_app_name) THEN RETURN; END IF;
+        IF EXISTS (SELECT 1 FROM audit.excluded_users_dll WHERE user_name = v_user_name) THEN RETURN; END IF;
         IF NOT (SELECT is_active FROM audit.conf_event_matrix WHERE command_tag = TG_TAG)  THEN RETURN; END IF;
         --IF v_is_active = false THEN RETURN; END IF;
 
@@ -155,10 +155,10 @@ $install$;
 
 -- Configurar comportamiento
 -- SELECT * FROM audit.conf_event_matrix limit 5;
--- SELECT * FROM audit.conf_excluded_apps limit 5;
--- SELECT * FROM  audit.conf_excluded_users limit 5;
+-- SELECT * FROM audit.excluded_apps_dll limit 5;
+-- SELECT * FROM  audit.excluded_users_dll limit 5;
 
---   INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+--   INSERT INTO audit.excluded_users_dll (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
 
 
  
