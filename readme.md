@@ -21,7 +21,7 @@ psql -h localhost -U postgres -d test -f pg_generate_rollback.sql
 | --- | --- |
 | **Despliegue Instantáneo:** Una sola línea de código activa la auditoría por tabla. | **Almacenamiento:** En tablas con millones de cambios, el esquema `audit` crecerá considerablemente. |
 | **Rollback Quirúrgico:** Genera SQL para restaurar filas individuales sin usar Backups. | **Impacto en Write:** Los triggers `AFTER ROW` añaden una mínima latencia en operaciones de escritura. |
-| **Configurable:** Puedes excluir aplicaciones (ej. `pg_cron`) o comandos específicos. | **Complejidad JSONB:** Requiere conocimientos básicos de JSONB para consultas manuales complejas. |
+| **Configurable:** Puedes excluir aplicaciones (ej. `pg_cron`), Usuarios o comandos DDL específicos. | **Complejidad JSONB:** Requiere conocimientos básicos de JSONB para consultas manuales complejas. |
 | **Seguridad:** Ejecución bajo `SECURITY DEFINER` para evitar manipulaciones de usuarios. |  |
 
 
