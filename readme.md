@@ -164,10 +164,10 @@ Genera dinámicamente el SQL necesario para revertir cualquier cambio.
 
 ```sql
 -- Consultas de Rollback
-SELECT audit.fn_sql_time_travel('clientes', 1); -- Revierte el INSERT (hace un DELETE)
-SELECT audit.fn_sql_time_travel('clientes', 2); -- Revierte el UPDATE (restaura valores)
-SELECT audit.fn_sql_time_travel('clientes', 3); -- Revierte el DELETE (hace un INSERT)
-SELECT audit.pg_generate_rollback('clientes', 4); -- Es el Truncate
+SELECT pg_generate_rollback('clientes', 1); -- Revierte el INSERT (hace un DELETE)
+SELECT pg_generate_rollback('clientes', 2); -- Revierte el UPDATE (restaura valores)
+SELECT pg_generate_rollback('clientes', 3); -- Revierte el DELETE (hace un INSERT)
+SELECT pg_generate_rollback('clientes', 4); -- Es el Truncate
 ```
 
 ### Salida del Generador:
