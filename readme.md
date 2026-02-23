@@ -1,7 +1,6 @@
 
-# 🚀 PostgreSQL Advanced Audit Framework (PAAF)
-
-Este framework con funciones que nos permite el rastreo de cambios en bases de datos PostgreSQL. Diseñado para DBAs y desarrolladores que necesitan **trazabilidad total** con un impacto mínimo en la configuración.
+# 🚀 PostgreSQL Advanced Audit
+Kit de funciones que nos permite el rastreo de cambios en bases de datos PostgreSQL. Diseñado para DBAs y desarrolladores que necesitan **trazabilidad total** con un impacto mínimo en la configuración.
 
 ---
 
