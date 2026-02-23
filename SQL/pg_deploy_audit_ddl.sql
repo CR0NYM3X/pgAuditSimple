@@ -1,4 +1,6 @@
-CREATE OR REPLACE FUNCTION public.pg_deploy_audit_ddl()
+CREATE SCHEMA IF NOT EXISTS audit;
+
+CREATE OR REPLACE FUNCTION audit.pg_deploy_audit_ddl()
 RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -33,6 +35,20 @@ BEGIN
         CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
         --INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
     END IF;
+
+    -- Nueva Mejora: Tabla de Exclusión de Usuarios
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_users' ) THEN
+        CREATE TABLE audit.conf_excluded_users (
+            user_name text PRIMARY KEY,
+            description text,
+            created_at timestamptz DEFAULT clock_timestamp()
+        );
+        CREATE INDEX IF NOT EXISTS idx_conf_excluded_users ON audit.conf_excluded_users (user_name);
+        
+        -- Insertamos el usuario de sistema por defecto como ejemplo
+        -- INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+    END IF;
+
 
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_event_matrix' ) THEN
         -- 4. MATRIZ DE CONFIGURACIÓN DE COMANDOS
@@ -83,12 +99,14 @@ BEGIN
         v_app_name  text := current_setting('application_name', true);
         v_query     text := current_query();
         v_timestamp timestamptz := clock_timestamp();
+        v_user_name text := session_user;
         r_obj       record;
-        v_is_active boolean;
+        -- v_is_active boolean;
     BEGIN
         IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN; END IF;
-        SELECT is_active INTO v_is_active FROM audit.conf_event_matrix WHERE command_tag = TG_TAG;
-        IF v_is_active = false THEN RETURN; END IF;
+        IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = v_user_name) THEN RETURN; END IF;
+        IF NOT (SELECT is_active FROM audit.conf_event_matrix WHERE command_tag = TG_TAG)  THEN RETURN; END IF;
+        --IF v_is_active = false THEN RETURN; END IF;
 
         IF TG_EVENT = 'ddl_command_end' THEN
             FOR r_obj IN SELECT object_identity FROM pg_catalog.pg_event_trigger_ddl_commands() LOOP
@@ -126,7 +144,7 @@ $install$;
 
 
 -- Ejecutar el instalador
--- SELECT public.pg_deploy_audit_ddl();
+-- SELECT audit.pg_deploy_audit_ddl();
 
 -- Probar el registro
 -- CREATE TABLE test_a(id int); CREATE TABLE test_b(id int);
@@ -136,8 +154,11 @@ $install$;
 -- SELECT * FROM  audit.ddl_history;
 
 -- Configurar comportamiento
--- SELECT * FROM audit.conf_event_matrix;
--- SELECT * FROM udit.conf_excluded_apps
+-- SELECT * FROM audit.conf_event_matrix limit 5;
+-- SELECT * FROM audit.conf_excluded_apps limit 5;
+-- SELECT * FROM  audit.conf_excluded_users limit 5;
+
+--   INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
 
 
  
