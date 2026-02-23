@@ -20,10 +20,10 @@ DECLARE
     v_pk_col      text;
 BEGIN
     -- 1. Obtener los metadatos de la tabla monitoreada
-    SELECT schema_name,  COALESCE(audit_table_name, table_name) as table_name, pk_column 
+    SELECT schema_name,  COALESCE(audit_table_name, schema_name || '_' table_name) as table_name, pk_column 
     INTO v_schema_orig, v_table_orig, v_pk_col
     FROM audit.dml_inventory 
-    WHERE audit_table_name = p_audit_table OR table_name = p_audit_table
+    WHERE audit_table_name = p_audit_table 
     LIMIT 1;
 
 
