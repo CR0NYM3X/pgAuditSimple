@@ -76,8 +76,14 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $body$;
 
--- Seguridad
+-- Seguridad  Asegurar search_path
 ALTER FUNCTION audit.pg_generate_rollback(text, bigint) SET search_path TO audit, public, pg_temp;
+
+-- Revocar ejecución pública
+REVOKE EXECUTE ON FUNCTION audit.pg_generate_rollback(text, bigint) FROM PUBLIC;
+
+
+ 
 
 
 
