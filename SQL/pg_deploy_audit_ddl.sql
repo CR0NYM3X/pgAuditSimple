@@ -141,6 +141,11 @@ BEGIN
 END;
 $install$;
 
+-- Seguridad  Asegurar search_path
+ALTER FUNCTION audit.pg_deploy_audit_ddl() SET search_path TO audit, public, pg_temp;
+
+-- Revocar ejecución pública
+REVOKE EXECUTE ON FUNCTION audit.pg_deploy_audit_ddl() FROM PUBLIC;
 
 
 -- Ejecutar el instalador
