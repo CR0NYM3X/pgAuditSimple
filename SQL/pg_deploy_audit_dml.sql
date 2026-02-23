@@ -192,6 +192,14 @@ END;
 $deploy$;
 
 
+-- Seguridad  Asegurar search_path
+ALTER FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) SET search_path TO audit, public, pg_temp;
+
+-- Revocar ejecución pública
+REVOKE EXECUTE ON FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) FROM PUBLIC;
+
+
+ 
 /*
 ------------------------------------------------------------
 -- PRUEBA 1: Auditoría completa (Default)
