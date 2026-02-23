@@ -51,26 +51,26 @@ BEGIN
     END IF;
 
     -- 2.2 Tabla de Exclusión de Aplicaciones
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_apps' ) THEN
-        CREATE TABLE audit.conf_excluded_apps (
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'excluded_apps_dml' ) THEN
+        CREATE TABLE audit.excluded_apps_dml (
             app_name text PRIMARY KEY,
             description text,
             created_at timestamptz DEFAULT clock_timestamp()
         );
-        CREATE INDEX IF NOT EXISTS idx_conf_excluded_apps ON audit.conf_excluded_apps (app_name);
+        CREATE INDEX IF NOT EXISTS idx_excluded_apps_dml ON audit.excluded_apps_dml (app_name);
     END IF;
 
     -- 2.3 Nueva Mejora: Tabla de Exclusión de Usuarios
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'conf_excluded_users' ) THEN
-        CREATE TABLE audit.conf_excluded_users (
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'excluded_users_dml' ) THEN
+        CREATE TABLE audit.excluded_users_dml (
             user_name text PRIMARY KEY,
             description text,
             created_at timestamptz DEFAULT clock_timestamp()
         );
-        CREATE INDEX IF NOT EXISTS idx_conf_excluded_users ON audit.conf_excluded_users (user_name);
+        CREATE INDEX IF NOT EXISTS idx_excluded_users_dml ON audit.excluded_users_dml (user_name);
         
         -- Insertamos el usuario de sistema por defecto como ejemplo
-        -- INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+        -- INSERT INTO audit.excluded_users_dml (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
     END IF;
 
     -- 3. Crear tabla de auditoría espejo (Dynamic DDL)
@@ -91,7 +91,7 @@ BEGIN
     EXECUTE v_sql;
 
     -- 4. Generar Función de Trigger DML
-    -- Mejora: Verifica tanto conf_excluded_apps como conf_excluded_users
+    -- Mejora: Verifica tanto excluded_apps_dml como excluded_users_dml
     v_sql := format($sql$
         CREATE OR REPLACE FUNCTION audit.%I()
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
@@ -104,8 +104,8 @@ BEGIN
             v_ip        text := COALESCE(host(inet_client_addr()), '127.0.0.1');
         BEGIN
             -- Filtros de exclusión
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = v_app_name) THEN RETURN COALESCE(NEW, OLD); END IF;
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = v_user_name) THEN RETURN COALESCE(NEW, OLD); END IF;
+            IF EXISTS (SELECT 1 FROM audit.excluded_apps_dml WHERE app_name = v_app_name) THEN RETURN COALESCE(NEW, OLD); END IF;
+            IF EXISTS (SELECT 1 FROM audit.excluded_users_dml WHERE user_name = v_user_name) THEN RETURN COALESCE(NEW, OLD); END IF;
 
             IF TG_OP = 'INSERT' THEN
                 INSERT INTO audit.%I (id_origen, operacion, valor_nuevo, usuario, ip_cliente, query)
@@ -139,8 +139,8 @@ BEGIN
         RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
         BEGIN
             -- Filtros de exclusión en Truncate
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_apps WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
-            IF EXISTS (SELECT 1 FROM audit.conf_excluded_users WHERE user_name = session_user) THEN RETURN NULL; END IF;
+            IF EXISTS (SELECT 1 FROM audit.excluded_apps_dml WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
+            IF EXISTS (SELECT 1 FROM audit.excluded_users_dml WHERE user_name = session_user) THEN RETURN NULL; END IF;
 
             INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
             VALUES (NULL, 'TRUNCATE', jsonb_build_object('info', 'Tabla vaciada'), session_user, COALESCE(host(inet_client_addr()), '127.0.0.1'), current_query());
@@ -230,11 +230,11 @@ SELECT * FROM audit.public_productos;
 -------- Configuraciones extras ---------
 SELECT * FROM audit.dml_inventory;
 
-SELECT * FROM  audit.conf_excluded_users;
-INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+SELECT * FROM  audit.excluded_users_dml;
+INSERT INTO audit.excluded_users_dml (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
 
-SELECT * FROM audit.conf_excluded_apps;
-INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+SELECT * FROM audit.excluded_apps_dml;
+INSERT INTO audit.excluded_apps_dml (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
 
 */
 
