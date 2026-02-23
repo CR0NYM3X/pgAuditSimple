@@ -20,7 +20,7 @@ DECLARE
     v_pk_col      text;
 BEGIN
     -- 1. Obtener los metadatos de la tabla monitoreada
-    SELECT schema_name,  COALESCE(audit_table_name, schema_name || '_' table_name) as table_name, pk_column 
+    SELECT schema_name,  COALESCE(audit_table_name, schema_name || '_' || table_name) as table_name, pk_column 
     INTO v_schema_orig, v_table_orig, v_pk_col
     FROM audit.dml_inventory 
     WHERE audit_table_name = p_audit_table 
@@ -86,15 +86,25 @@ REVOKE EXECUTE ON FUNCTION audit.pg_generate_rollback(text, bigint) FROM PUBLIC;
  
 
 
-
--- SELECT id_log, fecha_cambio, usuario, query FROM audit.cat_servidores  WHERE operacion = 'DELETE' AND id_origen = 1;
--- Supongamos que el id_log es 450
-
-
--- SELECT audit.pg_generate_rollback('clientes', 1);
--- SELECT audit.pg_generate_rollback('clientes', 2);
--- SELECT audit.pg_generate_rollback('clientes', 3);
--- SELECT audit.pg_generate_rollback('clientes', 4);
+/*
+-- Colocamos el nombre de la tabla que audit_table_name que aparece en la tabla audit.dml_inventory y el id_log que queremos hacerle rollback
+SELECT audit.pg_generate_rollback('public_clientes', 1);
+SELECT audit.pg_generate_rollback('public_clientes', 2);
+SELECT audit.pg_generate_rollback('public_clientes', 3);
+SELECT audit.pg_generate_rollback('public_clientes', 4);
 
 
+postgres@test#  SELECT id_log,operacion,audit.pg_generate_rollback('public_clientes',id_log) FROM audit.public_clientes;
++--------+-----------+-------------------------------------------------------------------------------------------------+
+| id_log | operacion |                                      pg_generate_rollback                                       |
++--------+-----------+-------------------------------------------------------------------------------------------------+
+|      1 | INSERT    | DELETE FROM public.public_clientes WHERE id_cli = '101';                                        |
+|      2 | UPDATE    | UPDATE public.public_clientes SET saldo = '5000', nombre = 'Empresa X' WHERE id_cli = '101';    |
+|      3 | DELETE    | INSERT INTO public.public_clientes (saldo, id_cli, nombre) VALUES ('6000', '101', 'Empresa Y'); |
+|      4 | TRUNCATE  | -- El ROLLBACK de TRUNCATE no es posible desde logs granulares. Use Backup de disco.            |
++--------+-----------+-------------------------------------------------------------------------------------------------+
+(4 rows)
 
+
+
+*/
