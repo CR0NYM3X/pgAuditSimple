@@ -150,8 +150,8 @@ BEGIN
     EXECUTE v_sql;
 
     -- 6. Montar Triggers finales según p_events
-    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_dml_%s ON %I.%I', p_table, p_schema, p_table);
-    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_trunc_%s ON %I.%I', p_table, p_schema, p_table);
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_dml_%s ON %I.%I', v_audit_table, p_schema, p_table);
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_trunc_%s ON %I.%I', v_audit_table, p_schema, p_table);
 
     IF v_event_list = 'all' OR v_event_list ~ '(insert|update|delete)' THEN
         DECLARE
@@ -166,13 +166,13 @@ BEGIN
             END IF;
 
             EXECUTE format('CREATE TRIGGER trg_audit_dml_%s AFTER %s ON %I.%I FOR EACH ROW EXECUTE FUNCTION audit.%I()',
-                p_table, v_actual_events, p_schema, p_table, v_trigger_func);
+                v_audit_table, v_actual_events, p_schema, p_table, v_trigger_func);
         END;
     END IF;
 
     IF v_event_list = 'all' OR v_event_list ~ 'truncate' THEN
         EXECUTE format('CREATE TRIGGER trg_audit_trunc_%s AFTER TRUNCATE ON %I.%I FOR EACH STATEMENT EXECUTE FUNCTION audit.%I()',
-            p_table, p_schema, p_table, v_trunc_func);
+            v_audit_table, p_schema, p_table, v_trunc_func);
     END IF;
 
 
