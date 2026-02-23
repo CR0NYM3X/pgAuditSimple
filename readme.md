@@ -1,12 +1,12 @@
 
 # 🚀 PostgreSQL Advanced Audit
-Kit de funciones que nos permite el rastreo de cambios en bases de datos PostgreSQL. Diseñado para DBAs y desarrolladores que necesitan **trazabilidad total** con un impacto mínimo en la configuración.
+Kit de funciones que nos permite el rastreo de cambios en bases de datos PostgreSQL. Diseñado para DBAs y desarrolladores que necesitan **trazabilidad total**
 
 ---
 
 ## 📂 Estructura e Instalación
 
-El framework se compone de tres módulos principales. Para instalarlos de una sola exhibición, utiliza el comando `psql` desde tu terminal:
+Se compone de tres módulos principales. Para instalarlos de una sola exhibición, utiliza el comando `psql` desde tu terminal:
 
 ```bash
 # Instalación masiva de los tres componentes principales
