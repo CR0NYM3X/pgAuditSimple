@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION audit.pg_generate_rollback(
+CREATE OR REPLACE FUNCTION public.pg_generate_rollback(
     p_audit_table text,
     p_id_log      bigint
 )
