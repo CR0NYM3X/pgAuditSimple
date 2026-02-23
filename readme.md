@@ -107,7 +107,7 @@ SELECT * FROM audit.conf_excluded_apps;
 
 ### Salida Esperada en `audit.public_clientes`:
 
-Las tablas siempre se guardan en el esquema **`audit`** con la siguiente estructura `p_schema  || _ || p_table` esto debido a que pueden existir varias tablas que se llaman igual pero en diferente esquema
+Las tablas siempre se guardan en el esquema **`audit`** y si no usaste el parametro p_audit_table_name  la  estructura del nombre va ser  `p_schema  || _ || p_table` esto debido a que pueden existir varias tablas que se llaman igual pero en diferente esquema
 
 ```text
 postgres@test# SELECT * FROM audit.public_clientes;
@@ -163,46 +163,64 @@ Genera dinámicamente el SQL necesario para revertir cualquier cambio.
 
 ```sql
 -- Consultas de Rollback
-SELECT pg_generate_rollback('clientes', 1); -- Revierte el INSERT (hace un DELETE)
-SELECT pg_generate_rollback('clientes', 2); -- Revierte el UPDATE (restaura valores)
-SELECT pg_generate_rollback('clientes', 3); -- Revierte el DELETE (hace un INSERT)
-SELECT pg_generate_rollback('clientes', 4); -- Es el Truncate
+SELECT audit.pg_generate_rollback('public_clientes', 1);
+SELECT audit.pg_generate_rollback('public_clientes', 2);
+SELECT audit.pg_generate_rollback('public_clientes', 3);
+SELECT audit.pg_generate_rollback('public_clientes', 4);
+
+SELECT id_log,operacion,audit.pg_generate_rollback('public_clientes',id_log) FROM audit.public_clientes;
 ```
 
 ### Salida del Generador:
 
 ```text
-postgres@test#  SELECT audit.pg_generate_rollback('clientes', 1);
-+---------------------------------------------------+
-|               pg_generate_rollback                |
-+---------------------------------------------------+
-| DELETE FROM public.clientes WHERE id_cli = '101'; |
-+---------------------------------------------------+
+postgres@test# SELECT audit.pg_generate_rollback('public_clientes', 1);
++----------------------------------------------------------+
+|                   pg_generate_rollback                   |
++----------------------------------------------------------+
+| DELETE FROM public.public_clientes WHERE id_cli = '101'; |
++----------------------------------------------------------+
 (1 row)
 
-postgres@test#  SELECT audit.pg_generate_rollback('clientes', 2);
-+---------------------------------------------------------------------------------------+
-|                                 pg_generate_rollback                                  |
-+---------------------------------------------------------------------------------------+
-| UPDATE public.clientes SET saldo = '5000', nombre = 'Empresa X' WHERE id_cli = '101'; |
-+---------------------------------------------------------------------------------------+
+Time: 1.489 ms
+postgres@test# SELECT audit.pg_generate_rollback('public_clientes', 2);
++----------------------------------------------------------------------------------------------+
+|                                     pg_generate_rollback                                     |
++----------------------------------------------------------------------------------------------+
+| UPDATE public.public_clientes SET saldo = '5000', nombre = 'Empresa X' WHERE id_cli = '101'; |
++----------------------------------------------------------------------------------------------+
 (1 row)
 
-postgres@test#  SELECT audit.pg_generate_rollback('clientes', 3);
-+------------------------------------------------------------------------------------------+
-|                                   pg_generate_rollback                                   |
-+------------------------------------------------------------------------------------------+
-| INSERT INTO public.clientes (saldo, id_cli, nombre) VALUES ('6000', '101', 'Empresa Y'); |
-+------------------------------------------------------------------------------------------+
+Time: 0.588 ms
+postgres@test# SELECT audit.pg_generate_rollback('public_clientes', 3);
++-------------------------------------------------------------------------------------------------+
+|                                      pg_generate_rollback                                       |
++-------------------------------------------------------------------------------------------------+
+| INSERT INTO public.public_clientes (saldo, id_cli, nombre) VALUES ('6000', '101', 'Empresa Y'); |
++-------------------------------------------------------------------------------------------------+
 (1 row)
 
-postgres@test#  SELECT audit.pg_generate_rollback('clientes', 4);
+Time: 0.910 ms
+postgres@test# SELECT audit.pg_generate_rollback('public_clientes', 4);
 +--------------------------------------------------------------------------------------+
 |                                 pg_generate_rollback                                 |
 +--------------------------------------------------------------------------------------+
 | -- El ROLLBACK de TRUNCATE no es posible desde logs granulares. Use Backup de disco. |
 +--------------------------------------------------------------------------------------+
 (1 row)
+
+Time: 0.503 ms
+postgres@test# SELECT id_log,operacion,audit.pg_generate_rollback('public_clientes',id_log) FROM audit.public_clientes;
++--------+-----------+-------------------------------------------------------------------------------------------------+
+| id_log | operacion |                                      pg_generate_rollback                                       |
++--------+-----------+-------------------------------------------------------------------------------------------------+
+|      1 | INSERT    | DELETE FROM public.public_clientes WHERE id_cli = '101';                                        |
+|      2 | UPDATE    | UPDATE public.public_clientes SET saldo = '5000', nombre = 'Empresa X' WHERE id_cli = '101';    |
+|      3 | DELETE    | INSERT INTO public.public_clientes (saldo, id_cli, nombre) VALUES ('6000', '101', 'Empresa Y'); |
+|      4 | TRUNCATE  | -- El ROLLBACK de TRUNCATE no es posible desde logs granulares. Use Backup de disco.            |
++--------+-----------+-------------------------------------------------------------------------------------------------+
+(4 rows)
+
 
 ```
 
