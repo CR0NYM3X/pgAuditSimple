@@ -233,6 +233,11 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 |  2 | psql     | DROP TABLE   | public.test_a | DROP TABLE test_a;           |
 +----+----------+--------------+---------------+------------------------------+
 
+
+-- SELECT * FROM audit.conf_event_matrix limit 5;
+-- SELECT * FROM audit.conf_excluded_apps limit 5;
+-- SELECT * FROM  audit.conf_excluded_users limit 5;
+
 ```
 
 ### Filtros Avanzados:
@@ -240,11 +245,14 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 * **Exclusión de Apps (ej. pg_cron) en audit DDL:**
 `SELECT * FROM audit.conf_excluded_apps;`
 *(Si el app_name coincide, no se genera registro para evitar ruido).*
+
+* **Exclusión de Usuarios (ej. postgres) en audit DDL:**
+`INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;`
+
 * **Desactivar Comandos Específicos DDL:**
 `UPDATE audit.conf_event_matrix SET is_active = false WHERE command_tag = 'DROP TABLE';`
 
- 
- 
+
 
 
 **Desarrollado por:** `CR0NYM3X` | **Fecha:** 2026
