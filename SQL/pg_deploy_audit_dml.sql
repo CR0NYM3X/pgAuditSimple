@@ -1,6 +1,7 @@
+CREATE SCHEMA IF NOT EXISTS audit;
 
 
-CREATE OR REPLACE FUNCTION public.pg_deploy_audit_dml(
+CREATE OR REPLACE FUNCTION audit.pg_deploy_audit_dml(
     p_schema            text,
     p_table             text,
     p_pk_col            text,
@@ -200,9 +201,9 @@ $deploy$;
 
 
 -- La auditoría se guardará en audit.historial_vip en lugar de audit.public_clientes
-SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all');
+SELECT audit.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all');
 
--- SELECT public.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all',  p_audit_table_name:=  'historial_vip');
+-- SELECT audit.pg_deploy_audit_dml( p_schema := 'public', p_table := 'clientes',  p_pk_col := 'id_cli', p_events :=  'all',  p_audit_table_name:=  'historial_vip');
 
 -- Operamos
 INSERT INTO public.clientes VALUES (101, 'Empresa X', 5000);
@@ -218,7 +219,7 @@ SELECT * FROM audit.public_clientes;
 ------------------------------------------------------------
 CREATE TABLE public.productos (id_prod int PRIMARY KEY, sku text);
 
-SELECT public.pg_deploy_audit_dml('public', 'productos', 'id_prod', 'insert,delete');
+SELECT audit.pg_deploy_audit_dml('public', 'productos', 'id_prod', 'insert,delete');
 
 INSERT INTO public.productos VALUES (1, 'SKU-001');
 UPDATE public.productos SET sku = 'SKU-999' WHERE id_prod = 1; -- No debería auditarse
