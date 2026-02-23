@@ -94,8 +94,8 @@ SELECT * FROM  audit.excluded_users_dml;
 
 
 -- Esto permite exluir application_name de la auditoria.
-INSERT INTO audit.conf_excluded_apps (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
-SELECT * FROM audit.conf_excluded_apps;
+INSERT INTO audit.excluded_apps_dml (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+SELECT * FROM audit.excluded_apps_dml;
 +----------+--------------------------------------+-------------------------------+
 | app_name |             description              |          created_at           |
 +----------+--------------------------------------+-------------------------------+
@@ -260,7 +260,7 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 ### Filtros Avanzados:
 
 * **Exclusión de Apps (ej. pg_cron) en audit DDL:**
-`SELECT * FROM audit.conf_excluded_apps;`
+`SELECT * FROM audit.excluded_apps_ddl;`
 *(Si el app_name coincide, no se genera registro para evitar ruido).*
 
 * **Exclusión de Usuarios (ej. postgres) en audit DDL:**
