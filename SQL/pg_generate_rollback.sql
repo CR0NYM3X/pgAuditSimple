@@ -75,7 +75,7 @@ END;
 $body$;
 
 -- Seguridad
-ALTER FUNCTION audit.pg_generate_rollback(text, bigint) SET search_path TO audit, public, pg_temp;
+ALTER FUNCTION public.pg_generate_rollback(text, bigint) SET search_path TO audit, public, pg_temp;
 
 
 
