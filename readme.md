@@ -63,7 +63,7 @@ Captura cambios a nivel de fila (INSERT, UPDATE, DELETE, TRUNCATE) de forma auto
 CREATE TABLE public.clientes (id_cli serial PRIMARY KEY, nombre text, saldo numeric);
 
 -- Desplegamos auditoría 'all'
-SELECT public.pg_deploy_audit_dml(  p_schema := 'public'
+SELECT audit.pg_deploy_audit_dml(  p_schema := 'public'
                                    ,p_table  := 'clientes'
                                    ,p_pk_col := 'id_cli'
                                    ,p_events := 'all'
@@ -85,8 +85,8 @@ SELECT * FROM audit.dml_inventory;
 +--------------+-------------+------------+------------------+-----------+--------+------------------------------+-------------+
 
 -- Esto permite excluir usuarios de la auditoria.
-INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
-SELECT * FROM  audit.conf_excluded_users;
+INSERT INTO audit.excluded_users_dml (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
+SELECT * FROM  audit.excluded_users_dml;
 +-----------+--------------------------+-------------------------------+
 | user_name |       description        |          created_at           |
 +-----------+--------------------------+-------------------------------+
@@ -216,7 +216,7 @@ Control total sobre cambios en el esquema. Incluye filtrado por aplicación y ma
 ### Ejemplo de Configuración y Filtrado:
 
 ```text
-postgres@test# SELECT public.pg_deploy_audit_ddl();
+postgres@test# SELECT audit.pg_deploy_audit_ddl();
 +---------------------------------------------------------------------------------+
 |                               pg_deploy_audit_ddl                               |
 +---------------------------------------------------------------------------------+
@@ -235,8 +235,8 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 
 
 -- SELECT * FROM audit.conf_event_matrix limit 5;
--- SELECT * FROM audit.conf_excluded_apps limit 5;
--- SELECT * FROM  audit.conf_excluded_users limit 5;
+-- SELECT * FROM audit.excluded_apps_ddl limit 5;
+-- SELECT * FROM  audit.excluded_users_ddl limit 5;
 
 ```
 
@@ -247,7 +247,7 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 *(Si el app_name coincide, no se genera registro para evitar ruido).*
 
 * **Exclusión de Usuarios (ej. postgres) en audit DDL:**
-`INSERT INTO audit.conf_excluded_users (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;`
+`INSERT INTO audit.excluded_users_ddl (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;`
 
 * **Desactivar Comandos Específicos DDL:**
 `UPDATE audit.conf_event_matrix SET is_active = false WHERE command_tag = 'DROP TABLE';`
