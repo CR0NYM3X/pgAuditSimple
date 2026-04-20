@@ -44,6 +44,7 @@ BEGIN
             events          text NOT NULL,
             deployed_at     timestamptz DEFAULT clock_timestamp(),
             deployed_by     text DEFAULT session_user,
+			enabled BOOLEAN DEFAULT TRUE NOT NULL, -- Te permite activar o desactivar la auditoria gracias a una rule y una fun
             UNIQUE(schema_name, table_name)
         );
         COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
@@ -199,6 +200,66 @@ ALTER FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) SET search_pa
 REVOKE EXECUTE ON FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) FROM PUBLIC;
 
 
+
+
+--- Funciona que permite activar y desactivar triggers 
+CREATE OR REPLACE FUNCTION audit.fn_apply_trigger_status(
+    p_schema_name       TEXT,
+    p_table_name        TEXT,
+    p_audit_table_name  TEXT,
+    p_events            TEXT,
+    p_enabled           BOOLEAN
+) RETURNS VOID 
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_action TEXT;
+BEGIN
+    set client_min_messages = notice;
+    
+
+    v_action := CASE WHEN p_enabled THEN 'ENABLE' ELSE 'DISABLE' END;
+
+    -- 1. Triggers DML (trg_audit_dml_...)
+    EXECUTE format('ALTER TABLE %I.%I %s TRIGGER %I', 
+                     p_schema_name,p_table_name, v_action, 'trg_audit_dml_' || p_audit_table_name);
+
+    -- 2. Triggers TRUNCATE (trg_audit_trunc_...)
+    -- Solo intentamos si los eventos incluyen ALL o TRUNCATE
+    IF UPPER(p_events) = ANY(ARRAY['ALL', 'TRUNCATE']) THEN
+        EXECUTE format('ALTER TABLE %I.%I %s TRIGGER %I', 
+                         p_schema_name,p_table_name, v_action, 'trg_audit_trunc_' || p_audit_table_name);
+    END IF;
+
+    RAISE NOTICE 'Se  % los triggers de auditoria de la tabla %.%' , (case when p_enabled then 'Activo' else 'Desactivo' end ), p_schema_name, p_table_name ;
+    RETURN;
+EXCEPTION 
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error gestionando triggers para %: %', p_audit_table_name, SQLERRM;
+        RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+
+REVOKE EXECUTE ON FUNCTION audit.fn_apply_trigger_status(TEXT,TEXT,TEXT,TEXT,BOOLEAN) FROM PUBLIC;
+
+-- RULE que se activa con unpdate en columna enabled para activar y desactivar triggers 
+CREATE OR REPLACE RULE r_audit_inventory_toggle AS
+    ON UPDATE TO audit.dml_inventory
+    WHERE NEW.enabled IS DISTINCT FROM OLD.enabled
+    DO ALSO 
+        SELECT audit.fn_apply_trigger_status(
+            NEW.schema_name, 
+            NEW.table_name, 
+            NEW.audit_table_name,
+            NEW.events, 
+            NEW.enabled
+        );
+
+
+
+
+
  
 /*
 ------------------------------------------------------------
@@ -243,6 +304,27 @@ INSERT INTO audit.excluded_users_dml (user_name, description) VALUES ('postgres'
 
 SELECT * FROM audit.excluded_apps_dml;
 INSERT INTO audit.excluded_apps_dml (app_name, description)  VALUES ('pg_cron', 'Procesos de mantenimiento automático')  ON CONFLICT DO NOTHING;
+
+--------------------------
+
+
+select * from audit.dml_inventory;
+
+UPDATE audit.dml_inventory SET enabled = true WHERE audit_table_name = 'public_pg_hba';
+UPDATE audit.dml_inventory SET enabled = false WHERE audit_table_name = 'public_pg_hba';
+UPDATE audit.dml_inventory SET enabled = true WHERE audit_table_name = 'public_pg_hba';
+ 
+
+select tgname AS trigger_name,
+CASE tgenabled
+    WHEN 'O' THEN 'Activado' -- (Origin) Solo se activa en operaciones locales (No se activa en réplicas).
+    WHEN 'D' THEN 'Desactivado' -- : (Disabled) El trigger está Desactivado.
+    WHEN 'R' THEN 'Replica' -- (Replica) Solo se activa si la sesión está en modo réplica.
+    WHEN 'A' THEN 'Always' -- (Always) Se activa siempre, sin importar si es origen o réplica.
+    ELSE tgenabled::text
+END AS status from pg_trigger  where tgname ilike 'trg_audit_dml_%' OR tgname ilike 'trg_audit_trunc_%';
+
+
 
 */
 
