@@ -49,6 +49,19 @@ BEGIN
         );
         COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
         CREATE INDEX IF NOT EXISTS idx_conf_monitored_lookup ON audit.dml_inventory (table_name, schema_name);
+
+		-- RULE que se activa con unpdate en columna enabled para activar y desactivar triggers 
+		CREATE OR REPLACE RULE r_audit_inventory_toggle AS
+		    ON UPDATE TO audit.dml_inventory
+		    WHERE NEW.enabled IS DISTINCT FROM OLD.enabled
+		    DO ALSO 
+		        SELECT audit.fn_apply_trigger_status(
+		            NEW.schema_name, 
+		            NEW.table_name, 
+		            NEW.audit_table_name,
+		            NEW.events, 
+		            NEW.enabled
+		        );
     END IF;
 
     -- 2.2 Tabla de Exclusión de Aplicaciones
@@ -243,18 +256,6 @@ $$ LANGUAGE plpgsql;
 
 REVOKE EXECUTE ON FUNCTION audit.fn_apply_trigger_status(TEXT,TEXT,TEXT,TEXT,BOOLEAN) FROM PUBLIC;
 
--- RULE que se activa con unpdate en columna enabled para activar y desactivar triggers 
-CREATE OR REPLACE RULE r_audit_inventory_toggle AS
-    ON UPDATE TO audit.dml_inventory
-    WHERE NEW.enabled IS DISTINCT FROM OLD.enabled
-    DO ALSO 
-        SELECT audit.fn_apply_trigger_status(
-            NEW.schema_name, 
-            NEW.table_name, 
-            NEW.audit_table_name,
-            NEW.events, 
-            NEW.enabled
-        );
 
 
 
