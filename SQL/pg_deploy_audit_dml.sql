@@ -1,6 +1,6 @@
 CREATE SCHEMA IF NOT EXISTS audit;
 
-
+-- DROP FUNCTION audit.pg_deploy_audit_dml;
 CREATE OR REPLACE FUNCTION audit.pg_deploy_audit_dml(
     p_schema            text,
     p_table             text,
