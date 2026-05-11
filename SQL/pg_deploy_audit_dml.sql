@@ -50,18 +50,76 @@ BEGIN
         COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
         CREATE INDEX IF NOT EXISTS idx_conf_monitored_lookup ON audit.dml_inventory (table_name, schema_name);
 
-		-- RULE que se activa con unpdate en columna enabled para activar y desactivar triggers 
-		CREATE OR REPLACE RULE r_audit_inventory_toggle AS
-		    ON UPDATE TO audit.dml_inventory
-		    WHERE NEW.enabled IS DISTINCT FROM OLD.enabled
-		    DO ALSO 
-		        SELECT audit.fn_apply_trigger_status(
-		            NEW.schema_name, 
-		            NEW.table_name, 
-		            NEW.audit_table_name,
-		            NEW.events, 
-		            NEW.enabled
-		        );
+
+        v_sql := $sql$
+
+            --- Funciona que permite activar y desactivar triggers 
+            CREATE OR REPLACE FUNCTION audit.fn_apply_trigger_status(
+                p_schema_name       TEXT,
+                p_table_name        TEXT,
+                p_audit_table_name  TEXT,
+                p_events            TEXT,
+                p_enabled           BOOLEAN
+            ) RETURNS VOID 
+            SECURITY DEFINER
+            AS $$
+            DECLARE
+                v_action TEXT;
+            BEGIN
+                set client_min_messages = notice;
+                
+                v_action := CASE WHEN p_enabled THEN 'ENABLE' ELSE 'DISABLE' END;
+
+                -- 1. Triggers DML (trg_audit_dml_...)
+                EXECUTE format('ALTER TABLE %I.%I %s TRIGGER %I', 
+                                p_schema_name,p_table_name, v_action, 'trg_audit_dml_' || p_audit_table_name);
+
+                -- 2. Triggers TRUNCATE (trg_audit_trunc_...)
+                -- Solo intentamos si los eventos incluyen ALL o TRUNCATE
+                IF UPPER(p_events) = ANY(ARRAY['ALL', 'TRUNCATE']) THEN
+                    EXECUTE format('ALTER TABLE %I.%I %s TRIGGER %I', 
+                                    p_schema_name,p_table_name, v_action, 'trg_audit_trunc_' || p_audit_table_name);
+                END IF;
+
+                RAISE NOTICE 'Se  % los triggers de auditoria de la tabla %.%' , (case when p_enabled then 'Activo' else 'Desactivo' end ), p_schema_name, p_table_name ;
+                RETURN;
+            EXCEPTION 
+                WHEN OTHERS THEN
+                    RAISE NOTICE 'Error gestionando triggers para %: %', p_audit_table_name, SQLERRM;
+                    RETURN;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            REVOKE EXECUTE ON FUNCTION audit.fn_apply_trigger_status(TEXT,TEXT,TEXT,TEXT,BOOLEAN) FROM PUBLIC;
+
+            -- trigger modifica el estatus de un trigger 
+            CREATE OR REPLACE FUNCTION audit.trg_fn_inventory_toggle()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                -- Solo actúa si el estado de 'enabled' cambió
+                IF (NEW.enabled IS DISTINCT FROM OLD.enabled) THEN
+                    PERFORM audit.fn_apply_trigger_status(
+                        NEW.schema_name, 
+                        NEW.table_name, 
+                        NEW.audit_table_name,
+                        NEW.events, 
+                        NEW.enabled
+                    );
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            CREATE TRIGGER t_audit_inventory_toggle
+            AFTER UPDATE ON audit.dml_inventory
+            FOR EACH ROW
+            EXECUTE FUNCTION audit.trg_fn_inventory_toggle();
+
+
+        $sql$;
+
+        EXECUTE v_sql;		
+
     END IF;
 
     -- 2.2 Tabla de Exclusión de Aplicaciones
