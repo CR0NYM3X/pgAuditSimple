@@ -163,10 +163,10 @@ Genera dinámicamente el SQL necesario para revertir cualquier cambio.
 
 ```sql
 -- Consultas de Rollback
-SELECT audit.pg_generate_rollback('public_clientes', 1);
-SELECT audit.pg_generate_rollback('public_clientes', 2);
-SELECT audit.pg_generate_rollback('public_clientes', 3);
-SELECT audit.pg_generate_rollback('public_clientes', 4);
+SELECT audit.pg_generate_rollback( p_audit_table := 'public_clientes', p_id_log := 1);
+SELECT audit.pg_generate_rollback( p_audit_table := 'public_clientes', p_id_log := 2);
+SELECT audit.pg_generate_rollback( p_audit_table := 'public_clientes', p_id_log := 3);
+SELECT audit.pg_generate_rollback( p_audit_table := 'public_clientes', p_id_log := 4);
 
 SELECT id_log,operacion,audit.pg_generate_rollback('public_clientes',id_log) FROM audit.public_clientes;
 ```
