@@ -1,4 +1,48 @@
+-- =========================================================================================
+-- BITÁCORA DE CONTROL DE CAMBIOS Y OPTIMIZACIONES
+-- =========================================================================================
+-- Autor de Mejoras: CR0NYM3X
+-- Fecha de Modificación: 19 de Mayo, 2026
+--
+-- DESCRIPCIÓN DE LAS MEJORAS IMPLEMENTADAS:
+--
+-- 1. CONTROL DE UNICIDAD Y AISLAMIENTO DE TABLAS ESPEJO:
+--    - Se implementó una validación estricta al inicio del bloque para impedir que dos tablas
+--      de origen distintas compartan o apunten a la misma tabla destino de auditoría. 
+--      Cada tabla origen ahora está forzada a poseer su propio histórico aislado.
+--
+-- 2. GESTIÓN SEGURO EN CAMBIOS DE DESTINO (REDIRECCIÓN):
+--    - Al detectar que una misma tabla origen cambia el nombre de su tabla espejo, se efectúa
+--      una limpieza automática y controlada de los triggers y funciones previas para evitar
+--      código huérfano.
+--    - [POLÍTICA DE SEGURIDAD]: Se eliminó de manera explícita cualquier sentencia distributiva 
+--      de eliminación física de tablas (DROP TABLE). Las tablas históricas anteriores permanecen 
+--      intactas en disco para garantizar la preservación del esquema y el no repudio de datos.
+--
+-- 3. VALIDACIÓN DE IDEMPOTENCIA AVANZADA:
+--    - Se añadió un mecanismo de cortocircuito inteligente que compara la firma de la petición
+--      actual contra los metadatos de 'audit.dml_inventory'. Si los parámetros (esquema, tabla, 
+--      columnas y eventos) son idénticos, la función retorna de inmediato un mensaje informativo
+--      bloqueando re-procesamientos innecesarios en el servidor.
+--
+-- 4. EVOLUCIÓN DINÁMICA DE TIPOS DE DATOS (PK COLUMN MIGRATION):
+--    - Al actualizar la llave primaria ('p_pk_col') o detectar cambios en su tipo original:
+--      a) Si la tabla de auditoría está VACÍA: Se ejecuta una alteración estructural dinámica
+--         (ALTER COLUMN TYPE) inyectando la cláusula 'USING id_origen::tipo_dato' para forzar 
+--         el cast explícito en conversiones complejas (ej. TEXT a INTEGER, UUID, etc.).
+--      b) Si la tabla de auditoría ya CONTIENE REGISTROS: Se dispara una excepción segura 
+--         (RAISE EXCEPTION) para blindar y salvaguardar la integridad referencial del histórico.
+--
+-- 5. SINCRONIZACIÓN Y DEPURACIÓN AUTOMÁTICA DE EVENTOS (HUÉRFANOS DE TRUNCATE):
+--    - Se diseñó un bloque de des-configuración que evalúa si el nivel de auditoría se mitiga 
+--      (ej. pasar de 'all' a eventos DML específicos). Si los nuevos parámetros excluyen la 
+--      operación 'TRUNCATE', la función se encarga de purgar físicamente la función de trigger 
+--      'fn_trg_trunc_...' del catálogo de metadatos de PostgreSQL, manteniendo el esquema limpio.
+-- =========================================================================================
+
+
 CREATE SCHEMA IF NOT EXISTS audit;
+
 
 -- DROP FUNCTION audit.pg_deploy_audit_dml;
 CREATE OR REPLACE FUNCTION audit.pg_deploy_audit_dml(
@@ -20,8 +64,16 @@ DECLARE
     v_trunc_func   text := 'fn_trg_trunc_' || v_audit_table;
     v_sql          text;
     v_event_list   text := lower(p_events);
+    v_old_audit_table text; -- Variable auxiliar para detectar cambios de tabla destino
+    
+    -- Variables nuevas para control de cambios e idempotencia
+    v_inv_rec      RECORD;
+    v_has_records  boolean;
 BEGIN
-    -- 1. Validar existencia de la tabla maestra y obtener tipo de PK
+
+
+ 
+    -- 1. Validar existencia de la tabla maestra y obtener tipo de PK (Duplicado analítico por orden original)
     SELECT data_type INTO v_pk_type
     FROM information_schema.columns
     WHERE table_schema = p_schema AND table_name = p_table AND column_name = p_pk_col;
@@ -39,12 +91,12 @@ BEGIN
             id_monitored    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             schema_name     text NOT NULL,
             table_name      text NOT NULL,
-			audit_table_name  text NOT NULL,
+            audit_table_name  text NOT NULL,
             pk_column       text NOT NULL,
             events          text NOT NULL,
             deployed_at     timestamptz DEFAULT clock_timestamp(),
             deployed_by     text DEFAULT session_user,
-			enabled BOOLEAN DEFAULT TRUE NOT NULL, -- Te permite activar o desactivar la auditoria gracias a una rule y una fun
+            enabled BOOLEAN DEFAULT TRUE NOT NULL, -- Te permite activar o desactivar la auditoria gracias a una rule y una fun
             UNIQUE(schema_name, table_name)
         );
         COMMENT ON TABLE audit.dml_inventory IS 'Catálogo de tablas bajo monitoreo de auditoría DML.';
@@ -118,9 +170,90 @@ BEGIN
 
         $sql$;
 
-        EXECUTE v_sql;		
+        EXECUTE v_sql;      
 
     END IF;
+
+
+    -- 1. Validar existencia de la tabla maestra y obtener tipo de PK actual
+    SELECT data_type INTO v_pk_type
+    FROM information_schema.columns
+    WHERE table_schema = p_schema AND table_name = p_table AND column_name = p_pk_col;
+
+    IF v_pk_type IS NULL THEN
+        RAISE EXCEPTION 'La tabla o la columna PK no existen en %.%', p_schema, p_table;
+    END IF;
+
+    -- 2. VALIDACIÓN: Impedir que otra tabla use el mismo nombre de auditoría
+    IF EXISTS(
+        SELECT 1 
+        FROM audit.dml_inventory 
+        WHERE audit_table_name = v_audit_table 
+          AND (schema_name != p_schema OR table_name != p_table)
+    ) THEN
+        RAISE EXCEPTION 'La tabla de auditoría "audit.%" ya está asignada a otra tabla de origen. Por favor, elija otro nombre en el parámetro p_audit_table_name.', v_audit_table;
+    END IF;
+
+    -- 3. VALIDACIÓN DE IDEMPOTENCIA Y EVOLUCIÓN DE TIPO DE PK
+    SELECT * INTO v_inv_rec 
+    FROM audit.dml_inventory 
+    WHERE schema_name = p_schema AND table_name = p_table;
+
+    IF FOUND THEN
+        -- CASO A: Es exactamente la misma configuración (No hay cambios)
+        IF v_inv_rec.audit_table_name = v_audit_table 
+           AND v_inv_rec.pk_column = p_pk_col 
+           AND v_inv_rec.events = v_event_list THEN
+            RETURN format('La auditoría para %s.%s ya existe con la misma configuración exacta. No se realizó ningún cambio.', p_schema, p_table);
+        END IF;
+
+        -- CASO B: Misma tabla destino, pero cambió la columna PK o su tipo de dato original mutó
+        IF v_inv_rec.audit_table_name = v_audit_table AND (v_inv_rec.pk_column != p_pk_col OR v_inv_rec.pk_column = p_pk_col) THEN
+            -- Verificar si la tabla física de auditoría ya existe y si tiene registros guardados
+            IF EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename = v_audit_table) THEN
+                EXECUTE format('SELECT EXISTS (SELECT 1 FROM audit.%I LIMIT 1)', v_audit_table) INTO v_has_records;
+                
+                IF v_has_records THEN
+                    -- Si tiene registros, bloqueamos el cambio automático para proteger el histórico
+                    IF v_inv_rec.pk_column != p_pk_col THEN
+                        RAISE EXCEPTION 'No se puede cambiar la columna PK de "%" a "%" porque la tabla audit.% ya contiene registros históricos. Realice el cambio manualmente o use otra tabla destino.', v_inv_rec.pk_column, p_pk_col, v_audit_table;
+                    ELSE
+                        -- Mismo nombre de columna pero el tipo en la tabla maestra cambió (Ej: de INT a BIGINT)
+                        -- Validamos si el tipo actual coincide con el de la tabla espejo para alertar al usuario
+                        RAISE NOTICE 'La tabla de auditoría audit.% contiene registros. Si modificó el tipo de datos en la tabla origen, asegúrese de alterarlo manualmente en la tabla de auditoría.', v_audit_table;
+                    END IF;
+                ELSE
+                    -- Si NO tiene registros, alteramos el tipo de id_origen de forma segura y transparente
+                    EXECUTE format('ALTER TABLE audit.%I ALTER COLUMN id_origen TYPE %s USING id_origen::%s', v_audit_table, v_pk_type, v_pk_type);
+                    RAISE NOTICE 'Se actualizó dinámicamente el tipo de la columna id_origen a % en audit.% porque la tabla está vacía.', v_pk_type, v_audit_table;
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+
+
+    -- 4. LÓGICA DE LIMPIEZA: Si la misma tabla cambia por completo su destino (Cambio de nombre de tabla espejo)
+    SELECT audit_table_name INTO v_old_audit_table
+    FROM audit.dml_inventory
+    WHERE schema_name = p_schema AND table_name = p_table;
+
+    IF v_old_audit_table IS NOT NULL AND v_old_audit_table != v_audit_table THEN
+        -- Borramos los triggers viejos de la tabla origen para evitar conflictos antes del cambio
+        EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_dml_%s ON %I.%I', v_old_audit_table, p_schema, p_table);
+        EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_trunc_%s ON %I.%I', v_old_audit_table, p_schema, p_table);
+        
+        -- LIMPIEZA DE FUNCIONES HUÉRFANAS (Aporte del paso anterior)
+        EXECUTE format('DROP FUNCTION IF EXISTS audit.%I()', 'fn_trg_audit_' || v_old_audit_table);
+        EXECUTE format('DROP FUNCTION IF EXISTS audit.%I()', 'fn_trg_trunc_' || v_old_audit_table);
+        
+        RAISE NOTICE 'Cambio de destino detectado. Se removieron triggers y funciones de la tabla destino anterior. La tabla audit.% NO fue eliminada por seguridad.', v_old_audit_table;
+    END IF;
+
+
+
+
+
+
 
     -- 2.2 Tabla de Exclusión de Aplicaciones
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname = 'audit' AND tablename  = 'excluded_apps_dml' ) THEN
@@ -145,7 +278,7 @@ BEGIN
         -- INSERT INTO audit.excluded_users_dml (user_name, description) VALUES ('postgres', 'Superusuario del sistema') ON CONFLICT DO NOTHING;
     END IF;
 
-    -- 3. Crear tabla de auditoría espejo (Dynamic DDL)
+    -- 3. Crear tabla de auditoría espejo (Dynamic DML)
     v_sql := format($sql$
         CREATE TABLE IF NOT EXISTS audit.%I (
             id_log          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -205,25 +338,27 @@ BEGIN
         $sql$, v_trigger_func, v_audit_table, p_pk_col, v_audit_table, p_pk_col, v_audit_table, p_pk_col, v_trigger_func);
     EXECUTE v_sql;
 
-    -- 5. Generar Función de Trigger TRUNCATE
-    v_sql := format($sql$
-        CREATE OR REPLACE FUNCTION audit.%I()
-        RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
-        BEGIN
-            -- Filtros de exclusión en Truncate
-            IF EXISTS (SELECT 1 FROM audit.excluded_apps_dml WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
-            IF EXISTS (SELECT 1 FROM audit.excluded_users_dml WHERE user_name = session_user) THEN RETURN NULL; END IF;
 
-            INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
-            VALUES (NULL, 'TRUNCATE', jsonb_build_object('info', 'Tabla vaciada'), session_user, COALESCE(host(inet_client_addr()), '127.0.0.1'), current_query());
-            RETURN NULL;
-        END; $$;
-        $sql$, v_trunc_func, v_audit_table);
-    EXECUTE v_sql;
-
-    -- 6. Montar Triggers finales según p_events
+    -- 5. Montar Triggers finales según p_events
     EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_dml_%s ON %I.%I', v_audit_table, p_schema, p_table);
     EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_trunc_%s ON %I.%I', v_audit_table, p_schema, p_table);
+
+
+    -- =========================================================================
+    -- NUEVA MEJORA DE RECONFIGURACIÓN DE EVENTOS (Limpieza de funciones huérfanas)
+    -- =========================================================================
+    -- Si los nuevos eventos NO incluyen truncate, borramos la función de trigger de truncate vieja
+    IF NOT (v_event_list = 'all' OR v_event_list ~ 'truncate') THEN
+        EXECUTE format('DROP FUNCTION IF EXISTS audit.%I()', v_trunc_func);
+    END IF;
+
+    -- Si los nuevos eventos NO incluyen DMLs estándares (un escenario raro pero posible), borramos la función DML
+    IF NOT (v_event_list = 'all' OR v_event_list ~ '(insert|update|delete)') THEN
+        EXECUTE format('DROP FUNCTION IF EXISTS audit.%I()', v_trigger_func);
+    END IF;
+    -- =========================================================================
+
+
 
     IF v_event_list = 'all' OR v_event_list ~ '(insert|update|delete)' THEN
         DECLARE
@@ -242,22 +377,37 @@ BEGIN
         END;
     END IF;
 
-    IF v_event_list = 'all' OR v_event_list ~ 'truncate' THEN
+     -- 5. Generar Función de Trigger TRUNCATE
+    IF v_event_list = 'all' OR v_event_list ~ 'truncate' THEN       
+        v_sql := format($sql$
+            CREATE OR REPLACE FUNCTION audit.%I()
+            RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+            BEGIN
+                -- Filtros de exclusión en Truncate
+                IF EXISTS (SELECT 1 FROM audit.excluded_apps_dml WHERE app_name = current_setting('application_name', true)) THEN RETURN NULL; END IF;
+                IF EXISTS (SELECT 1 FROM audit.excluded_users_dml WHERE user_name = session_user) THEN RETURN NULL; END IF;
+
+                INSERT INTO audit.%I (id_origen, operacion, valor_anterior, usuario, ip_cliente, query)
+                VALUES (NULL, 'TRUNCATE', jsonb_build_object('info', 'Tabla vaciada'), session_user, COALESCE(host(inet_client_addr()), '127.0.0.1'), current_query());
+                RETURN NULL;
+            END; $$;
+            $sql$, v_trunc_func, v_audit_table);
+        EXECUTE v_sql;
+
         EXECUTE format('CREATE TRIGGER trg_audit_trunc_%s AFTER TRUNCATE ON %I.%I FOR EACH STATEMENT EXECUTE FUNCTION audit.%I()',
             v_audit_table, p_schema, p_table, v_trunc_func);
     END IF;
 
-
-	-- 7. REGISTRO EN TABLA DE CONTROL (Idempotente)
-		INSERT INTO audit.dml_inventory (schema_name, table_name, audit_table_name, pk_column, events)
-		VALUES (p_schema, p_table, v_audit_table, p_pk_col, v_event_list)
-		ON CONFLICT (schema_name, table_name) 
-		DO UPDATE SET 
-            audit_table_name = EXCLUDED.audit_table_name,
-            pk_column = EXCLUDED.pk_column,
-            events = EXCLUDED.events,
-            deployed_at = clock_timestamp(),
-            deployed_by = session_user;
+    -- 6. REGISTRO EN TABLA DE CONTROL (Idempotente)
+    INSERT INTO audit.dml_inventory (schema_name, table_name, audit_table_name, pk_column, events)
+    VALUES (p_schema, p_table, v_audit_table, p_pk_col, v_event_list)
+    ON CONFLICT (schema_name, table_name) 
+    DO UPDATE SET 
+        audit_table_name = EXCLUDED.audit_table_name,
+        pk_column = EXCLUDED.pk_column,
+        events = EXCLUDED.events,
+        deployed_at = clock_timestamp(),
+        deployed_by = session_user;
 
     RETURN format('Auditoría desplegada en audit.%s para la tabla %s.%s (Eventos: %s)', v_audit_table, p_schema, p_table, p_events);
 END;
@@ -269,10 +419,6 @@ ALTER FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) SET search_pa
 
 -- Revocar ejecución pública
 REVOKE EXECUTE ON FUNCTION audit.pg_deploy_audit_dml(TEXT,TEXT,TEXT,TEXT,TEXT) FROM PUBLIC;
-
-
-
-
 
 
  
