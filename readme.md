@@ -271,9 +271,40 @@ postgres@test# SELECT id, app_name, event, object_name, query FROM audit.ddl_his
 
 
 
+---
+
+
+#  lista de los objetos que se crean:
+
+### Esquema y Tablas de Control (Infraestructura)
+
+* **Esquema `audit`:** El contenedor lógico (base de datos dedicada) que separa y protege todos los objetos de auditoría del esquema público productivo.
+* **Tabla `audit.dml_inventory`:** El catálogo principal. Registra qué tablas se están auditando, qué columna es su PK, qué eventos escuchan y si están activos (`enabled`).
+* **Tabla `audit.excluded_apps_dml`:** Lista negra de aplicaciones. Si registras aquí el nombre de un sistema (ej. un script de migración masiva), la auditoría ignorará sus cambios.
+* **Tabla `audit.excluded_users_dml`:** Lista negra de usuarios. Si registras aquí un rol de la base de datos, sus acciones no se guardarán en la auditoría.
+
+
+### Componentes Dinámicos (Por cada tabla auditada)
+
+* **Tabla Espejo (`audit.tu_tabla_auditoria`):** La tabla física donde se almacena el histórico de cambios. Guarda la fecha, el usuario, la IP, el query exacto y los valores modificados en formato JSONB.
+* **Función de Trigger DML (`audit.fn_trg_audit_...`):** Contiene la lógica programada en PL/pgSQL que captura los datos antes/después del cambio, calcula las diferencias (`updates`) y escribe el log en la tabla espejo.
+* **Trigger DML (`trg_audit_dml_...`):** El "interruptor" pegado a tu tabla productiva que se activa **después** de cada `INSERT`, `UPDATE` o `DELETE` e invoca a la función DML.
+* **Función de Trigger TRUNCATE (`audit.fn_trg_trunc_...`):** Lógica simplificada encargada exclusivamente de registrar cuándo una tabla fue vaciada por completo (`TRUNCATE`).
+* **Trigger TRUNCATE (`trg_audit_trunc_...`):** El "interruptor" pegado a tu tabla productiva que se activa a nivel de sentencia cada vez que se ejecuta un `TRUNCATE`.
+
+
+### Funciones del Sistema y Automatización
+
+* **Función `audit.pg_deploy_audit_dml`:** El motor principal. Se encarga de validar, crear, actualizar o limpiar todos los objetos anteriores de forma automática.
+* **Función `audit.fn_apply_trigger_status`:** Una herramienta interna que activa o desactiva (`ENABLE` / `DISABLE`) los triggers de las tablas productivas sin borrar nada.
+* **Función de Switch (`audit.trg_fn_inventory_toggle`):** Una función especial que detecta si cambiaste la columna `enabled` en el inventario.
+* **Trigger de Switch (`t_audit_inventory_toggle`):** Un trigger que vive dentro de la tabla `audit.dml_inventory`. En cuanto nota que actualizas el estado de una fila, invoca a `fn_apply_trigger_status` para apagar o encender la auditoría de esa tabla en tiempo real.
+
+
+---
+
 
 **Desarrollado por:** `CR0NYM3X` | **Fecha:** 2026
-
  
 # Referencias
 ```
